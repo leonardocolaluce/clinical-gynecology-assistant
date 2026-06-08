@@ -166,6 +166,10 @@ def chat(req: ChatRequest) -> ChatResponse:
             cached = db.get_cached_papers(conn, pmids)
 
         papers = [cached[p] for p in pmids if p in cached]
+        print(
+            f"[PUBMED] query={query_used!r} pmids={len(pmids)} papers={len(papers)} cached={len(pmids) - fetched} fetched={fetched}",
+            flush=True,
+        )
         run = db.create_retrieval_run(conn, query=query_used, found_count=len(pmids), pmids=pmids)
 
         # Optional reranking: keep only top-k most relevant abstracts before answering.
@@ -208,6 +212,11 @@ def chat(req: ChatRequest) -> ChatResponse:
                     dbg(f"External(SQLite) hits={len(hits)} final={len(external_docs)}")
                 finally:
                     ext_conn.close()
+                    
+        print(
+            f"[EUROPEPMC] enabled={bool(settings.external_rag_db_path)} path={settings.external_rag_db_path!r} docs={len(external_docs)}",
+            flush=True,
+        )
 
         if external_docs:
             ans = answer_with_pubmed_and_external(
