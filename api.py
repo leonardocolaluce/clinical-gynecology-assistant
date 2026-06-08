@@ -1,3 +1,4 @@
+import json
 from __future__ import annotations
 from .flow._12_gyn_suggest import suggest_top3
 from typing import Any, Optional
@@ -65,6 +66,10 @@ class ChatResponse(BaseModel):
     citations: list[Citation]
     suggestions: list[GynSuggestionOut] = []
 
+class PromptConfig(BaseModel):
+    patient: str
+    menopause: str
+    doctor: str
 
 app = FastAPI(title="Pipeline M1 - Chatbot Gin", version="0.1")
 
@@ -80,6 +85,30 @@ def _startup() -> None:
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
+PROMPTS_PATH = Path(__file__).resolve().parent / "runtime" / "prompts.json"
+
+DEFAULT_PROMPTS = {
+    "patient": "Stile paziente: semplice, chiaro, non allarmistico.",
+    "menopause": (
+        "Stile menopausa: chiaro e pratico, orientato ai sintomi e alle esigenze tipiche della menopausa, "
+        "senza fare diagnosi/terapia personalizzata."
+    ),
+    "doctor": "Stile medico: tecnico, neutro, conciso.",
+}
+
+
+@app.get("/admin/prompts", response_model=PromptConfig)
+def get_prompts() -> PromptConfig:
+    if PROMPTS_PATH.is_file():
+        return PromptConfig(**json.loads(PROMPTS_PATH.read_text(encoding="utf-8")))
+    return PromptConfig(**DEFAULT_PROMPTS)
+
+
+@app.put("/admin/prompts")
+def save_prompts(payload: PromptConfig) -> dict[str, str]:
+    PROMPTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PROMPTS_PATH.write_text(payload.model_dump_json(indent=2), encoding="utf-8")
+    return {"status": "ok"}
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest) -> ChatResponse:
