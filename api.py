@@ -70,6 +70,7 @@ def health() -> dict[str, str]:
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest) -> ChatResponse:
+    print(f"[CHAT] mode={req.mode!r} message={req.message[:80]!r}", flush=True)
     settings = load_settings()
     if not settings.openai_api_key:
         raise HTTPException(status_code=500, detail="Missing OPENAI_API_KEY")
