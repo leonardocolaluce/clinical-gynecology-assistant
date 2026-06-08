@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+from .flow._12_gyn_suggest import suggest_top3
 from typing import Any, Optional
 from pathlib import Path
 
@@ -28,7 +28,19 @@ from .flow._14_debug import dbg
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
     mode: str = Field(default="patient", description="patient|doctor|menopause")
+    city: Optional[str] = None
+    address_hint: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
+class GynSuggestionOut(BaseModel):
+    name: str
+    address: str
+    phone: Optional[str] = None
+    website: Optional[str] = None
+    emails: Optional[str] = None
+    rating: Optional[float] = None
+    reviews: Optional[int] = None
 
 class Citation(BaseModel):
     pmid: str
@@ -51,6 +63,7 @@ class ChatResponse(BaseModel):
     answer: str
     retrieval: RetrievalInfo
     citations: list[Citation]
+    suggestions: list[GynSuggestionOut] = []
 
 
 app = FastAPI(title="Pipeline M1 - Chatbot Gin", version="0.1")
@@ -221,6 +234,29 @@ def chat(req: ChatRequest) -> ChatResponse:
 
         db.finalize_message_ok(conn, message_id=message_id, answer=answer_text, retrieval_run_id=run.id, cited_pmids=cited_pmids)
 
+        print(
+            f"[RETRIEVAL] query={query_used!r} found={len(pmids)} cached={len(pmids) - fetched} fetched={fetched}",
+            flush=True,
+        )
+
+        suggestions: list[GynSuggestionOut] = []
+        has_location = bool(req.city or req.address_hint or req.latitude is not None or req.longitude is not None)
+
+        if req.mode != "doctor" and has_location and req.city:
+            raw_suggestions = suggest_top3(city=req.city, address_hint=req.address_hint)
+            suggestions = [
+                GynSuggestionOut(
+                    name=s.name,
+                    address=s.address,
+                    phone=s.phone,
+                    website=s.website,
+                    emails=s.emails,
+                    rating=s.rating,
+                    reviews=s.reviews,
+                )
+                for s in raw_suggestions
+            ]
+
         return ChatResponse(
             answer=answer_text,
             retrieval=RetrievalInfo(
@@ -231,6 +267,7 @@ def chat(req: ChatRequest) -> ChatResponse:
                 fetched=fetched,
             ),
             citations=citations,
+            suggestions=suggestions,
         )
     except Exception as e:
         db.finalize_message_error(conn, message_id=message_id, error=str(e))
