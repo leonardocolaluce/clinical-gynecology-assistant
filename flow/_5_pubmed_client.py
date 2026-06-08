@@ -1,5 +1,6 @@
 from __future__ import annotations
-
+import ssl
+import certifi
 import time
 import urllib.parse
 import urllib.request
@@ -35,7 +36,9 @@ class PubMedClient:
         )
         time.sleep(self.min_delay_s)
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
+        
+            with urllib.request.urlopen(req, timeout=self.timeout_s, context=ssl_context) as resp:
                 return resp.read()
         except urllib.error.HTTPError as e:
             try:
