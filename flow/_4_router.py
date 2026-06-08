@@ -22,6 +22,7 @@ Decidi se serve consultare PubMed prima di rispondere.
 Regole:
 - Se la domanda e' generale/conversazionale (saluti, "chi sei?", cose non mediche, data/ora), route="direct".
 - Se la domanda e' medica/ginecologica e beneficia di evidenze/citazioni, route="pubmed".
+- Se route="pubmed", scrivi "term" in inglese: traduci/normalizza la domanda utente in termini biomedicali inglesi adatti a PubMed".
 - Se e' una domanda medica ma non richiede letteratura (es. chiarimenti sul funzionamento), route="direct".
 
 Rispondi SOLO con JSON valido, senza testo extra:
