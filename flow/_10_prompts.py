@@ -1,6 +1,20 @@
 from __future__ import annotations
 
+import json
 import textwrap
+from pathlib import Path
+
+
+_PROMPTS_PATH = Path(__file__).resolve().parents[1] / "runtime" / "prompts.json"
+
+_DEFAULT_STYLES = {
+    "patient": "Stile paziente: semplice, chiaro, non allarmistico.",
+    "menopause": (
+        "Stile menopausa: chiaro e pratico, orientato ai sintomi e alle esigenze tipiche della menopausa, "
+        "senza fare diagnosi/terapia personalizzata."
+    ),
+    "doctor": "Stile medico: tecnico, neutro, conciso.",
+}
 
 
 def normalize_mode(mode: str) -> str:
@@ -12,17 +26,37 @@ def normalize_mode(mode: str) -> str:
     return "patient"
 
 
+def load_prompt_styles() -> dict[str, str]:
+    styles = dict(_DEFAULT_STYLES)
+    try:
+        if _PROMPTS_PATH.is_file():
+            data = json.loads(_PROMPTS_PATH.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                for mode in ("patient", "menopause", "doctor"):
+                    value = str(data.get(mode) or "").strip()
+                    if value:
+                        styles[mode] = value
+    except Exception:
+        pass
+    return styles
+
+
+def save_prompt_styles(*, patient: str, menopause: str, doctor: str) -> None:
+    _PROMPTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "patient": patient.strip() or _DEFAULT_STYLES["patient"],
+        "menopause": menopause.strip() or _DEFAULT_STYLES["menopause"],
+        "doctor": doctor.strip() or _DEFAULT_STYLES["doctor"],
+    }
+    _PROMPTS_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _style_for_mode(mode: str) -> str:
+    return load_prompt_styles()[normalize_mode(mode)]
+
+
 def direct_system_prompt(*, mode: str) -> str:
-    m = normalize_mode(mode)
-    if m == "doctor":
-        style = "Stile: tecnico, professionale, conciso, con terminologia clinica appropriata."
-    elif m == "menopause":
-        style = (
-            "Stile: chiaro e rassicurante. Contesto: donna in menopausa; considera sintomi e bisogni tipici "
-            "(es. vampate, secchezza vaginale, sonno, umore), senza fare diagnosi o terapie personalizzate."
-        )
-    else:
-        style = "Stile: semplice, chiaro, non allarmistico."
+    style = _style_for_mode(mode)
 
     return textwrap.dedent(
         f"""
@@ -37,16 +71,7 @@ def direct_system_prompt(*, mode: str) -> str:
 
 
 def pubmed_system_prompt(*, mode: str, disclaimer: str) -> str:
-    m = normalize_mode(mode)
-    if m == "doctor":
-        style = "Stile medico: tecnico, neutro, conciso."
-    elif m == "menopause":
-        style = (
-            "Stile menopausa: chiaro e pratico, orientato ai sintomi e alle esigenze tipiche della menopausa, "
-            "senza fare diagnosi/terapia personalizzata."
-        )
-    else:
-        style = "Stile paziente: semplice, chiaro, non allarmistico."
+    style = _style_for_mode(mode)
 
     return textwrap.dedent(
         f"""
@@ -68,16 +93,7 @@ def pubmed_system_prompt(*, mode: str, disclaimer: str) -> str:
 
 
 def pubmed_external_system_prompt(*, mode: str, disclaimer: str) -> str:
-    m = normalize_mode(mode)
-    if m == "doctor":
-        style = "Stile medico: tecnico, neutro, conciso."
-    elif m == "menopause":
-        style = (
-            "Stile menopausa: chiaro e pratico, orientato ai sintomi e alle esigenze tipiche della menopausa, "
-            "senza fare diagnosi/terapia personalizzata."
-        )
-    else:
-        style = "Stile paziente: semplice, chiaro, non allarmistico."
+    style = _style_for_mode(mode)
 
     return textwrap.dedent(
         f"""
@@ -100,16 +116,7 @@ def pubmed_external_system_prompt(*, mode: str, disclaimer: str) -> str:
 
 
 def revise_system_prompt(*, mode: str, disclaimer: str, min_n: int, allowed_pmids_str: str) -> str:
-    m = normalize_mode(mode)
-    if m == "doctor":
-        style = "Stile medico: tecnico, neutro, conciso."
-    elif m == "menopause":
-        style = (
-            "Stile menopausa: chiaro e pratico, orientato ai sintomi e alle esigenze tipiche della menopausa, "
-            "senza fare diagnosi/terapia personalizzata."
-        )
-    else:
-        style = "Stile paziente: semplice, chiaro, non allarmistico."
+    style = _style_for_mode(mode)
 
     return textwrap.dedent(
         f"""
@@ -127,4 +134,3 @@ def revise_system_prompt(*, mode: str, disclaimer: str, min_n: int, allowed_pmid
         {style}
         """
     ).strip()
-
