@@ -1,5 +1,6 @@
-import json
 from __future__ import annotations
+
+from .flow._10_prompts import load_prompt_styles, save_prompt_styles
 from .flow._12_gyn_suggest import suggest_top3
 from typing import Any, Optional
 from pathlib import Path
@@ -85,29 +86,15 @@ def _startup() -> None:
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
-PROMPTS_PATH = Path(__file__).resolve().parent / "runtime" / "prompts.json"
-
-DEFAULT_PROMPTS = {
-    "patient": "Stile paziente: semplice, chiaro, non allarmistico.",
-    "menopause": (
-        "Stile menopausa: chiaro e pratico, orientato ai sintomi e alle esigenze tipiche della menopausa, "
-        "senza fare diagnosi/terapia personalizzata."
-    ),
-    "doctor": "Stile medico: tecnico, neutro, conciso.",
-}
-
 
 @app.get("/admin/prompts", response_model=PromptConfig)
 def get_prompts() -> PromptConfig:
-    if PROMPTS_PATH.is_file():
-        return PromptConfig(**json.loads(PROMPTS_PATH.read_text(encoding="utf-8")))
-    return PromptConfig(**DEFAULT_PROMPTS)
+    return PromptConfig(**load_prompt_styles())
 
 
 @app.put("/admin/prompts")
 def save_prompts(payload: PromptConfig) -> dict[str, str]:
-    PROMPTS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    PROMPTS_PATH.write_text(payload.model_dump_json(indent=2), encoding="utf-8")
+    save_prompt_styles(patient=payload.patient, menopause=payload.menopause, doctor=payload.doctor)
     return {"status": "ok"}
 
 @app.post("/chat", response_model=ChatResponse)
