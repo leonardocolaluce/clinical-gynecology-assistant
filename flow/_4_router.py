@@ -24,6 +24,12 @@ Regole:
 - Se la domanda e' medica/ginecologica e beneficia di evidenze/citazioni, route="pubmed".
 - Se route="pubmed", scrivi "term" in inglese: traduci/normalizza la domanda utente in termini biomedicali inglesi adatti a PubMed".
 - Se e' una domanda medica ma non richiede letteratura (es. chiarimenti sul funzionamento), route="direct".
+- Se route="pubmed", il campo "term" deve essere una query PubMed in inglese, specifica per la domanda utente, anche se la domanda e' in italiano. Non usare query generiche come "gynecology OR obstetrics" se la domanda contiene un tema specifico.
+
+Esempi:
+- "cosa e' la menopausa" -> "menopause[Title/Abstract] OR menopausal[Title/Abstract] OR Menopause[MeSH Terms]"
+- "cosa e' endometriosi" -> "endometriosis[Title/Abstract] OR Endometriosis[MeSH Terms]"
+- "perdite vaginali cause" -> "vaginal discharge[Title/Abstract] AND causes[Title/Abstract]"
 
 Rispondi SOLO con JSON valido, senza testo extra:
 {
