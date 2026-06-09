@@ -50,6 +50,7 @@ def answer_with_pubmed(
     model: str,
     question: str,
     mode: str,
+    history: list[dict[str, str]] | None = None,
     disclaimer: str,
     papers: list[Paper],
 ) -> Answer:
@@ -94,6 +95,7 @@ def answer_with_pubmed_and_external(
     model: str,
     question: str,
     mode: str,
+    history: list[dict[str, str]] | None = None,
     disclaimer: str,
     pubmed_papers: list[Paper],
     external_docs: list[ExternalDoc],
@@ -103,7 +105,8 @@ def answer_with_pubmed_and_external(
     pubmed_ctx = _format_context(pubmed_papers or [])
     ext_ctx = _format_external_context(external_docs or [])
     user = (
-        f"Domanda utente:\n{question}\n\n"
+        f"Conversazione precedente:\n{_format_history(history)}\n\n"
+        f"Domanda attuale:\n{question}\n\n"
         f"Fonti PubMed (abstract):\n{pubmed_ctx or '<nessuna fonte PubMed>'}\n\n"
         f"Fonti Dataset (documenti):\n{ext_ctx or '<nessuna fonte Dataset>'}"
     )
