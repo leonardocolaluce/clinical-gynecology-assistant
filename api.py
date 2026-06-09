@@ -30,6 +30,7 @@ from .flow._14_debug import dbg
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
     mode: str = Field(default="patient", description="patient|doctor|menopause")
+    session_id: Optional[str] = None
     city: Optional[str] = None
     address_hint: Optional[str] = None
     latitude: Optional[float] = None
@@ -113,7 +114,9 @@ def chat(req: ChatRequest) -> ChatResponse:
     conn = db.connect()
     db.init_db(conn)
 
-    message_id = db.create_message(conn, mode=req.mode, question=req.message)
+    session_id = (req.session_id or "").strip() or "default"
+    history = db.get_recent_messages(conn, session_id=session_id, limit=10)
+    message_id = db.create_message(conn, mode=req.mode, question=req.message, session_id=session_id)
 
     try:
         dbg(f"/chat mode={req.mode!r} msg_len={len((req.message or '').strip())}")
