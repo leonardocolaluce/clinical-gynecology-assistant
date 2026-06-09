@@ -66,6 +66,45 @@ def decide_route(client: OpenAIClient, *, model: str, question: str) -> RouteDec
         term = None
     return RouteDecision(route=route, term=term, last_years=last_years, require_review=require_review)
 
+def contextualize_question(
+    client: OpenAIClient,
+    *,
+    model: str,
+    question: str,
+    history: list[dict[str, str]] | None,
+) -> str:
+    if not history:
+        return question
+
+    recent = []
+    for item in history[-5:]:
+        q = (item.get("question") or "").strip()
+        a = (item.get("answer") or "").strip()
+        recent.append(f"Utente: {q}\nAssistente: {a[:500]}")
+
+    content = client.chat(
+        model=model,
+        temperature=0.0,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Riscrivi la domanda attuale rendendola autonoma usando il contesto. "
+                    "Se la domanda attuale è già autonoma, restituiscila invariata. "
+                    "Rispondi solo con la domanda riscritta, senza spiegazioni."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    "Conversazione precedente:\n"
+                    + "\n\n".join(recent)
+                    + f"\n\nDomanda attuale:\n{question}"
+                ),
+            },
+        ],
+    )
+    return (content or question).strip() or question
 
 def allow_direct_without_sources(question: str) -> bool:
     """
