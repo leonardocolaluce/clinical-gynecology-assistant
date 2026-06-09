@@ -101,6 +101,12 @@ def save_prompts(payload: PromptConfig) -> dict[str, str]:
 def chat(req: ChatRequest) -> ChatResponse:
     print(f"[CHAT] mode={req.mode!r} message={req.message[:80]!r}", flush=True)
     settings = load_settings()
+    print(
+        f"[SETTINGS] external_path={settings.external_rag_db_path!r} "
+        f"collection={settings.external_chroma_collection!r} "
+        f"external_candidates={settings.external_candidates} final_external_k={settings.final_external_k}",
+        flush=True,
+    )
     if not settings.openai_api_key:
         raise HTTPException(status_code=500, detail="Missing OPENAI_API_KEY")
 
@@ -184,13 +190,20 @@ def chat(req: ChatRequest) -> ChatResponse:
             papers = reranked.papers
 
         external_docs = []
+        print("[EUROPEPMC] external block reached", flush=True)
         if settings.external_rag_db_path and int(settings.external_candidates) > 0 and int(settings.final_external_k) > 0:
             if settings.external_rag_db_path.strip().lower().startswith("http"):
                 raise RuntimeError("EXTERNAL_RAG_DB_PATH is a URL. Provide a local path (Drive-synced folder/file) instead.")
             p = Path(settings.external_rag_db_path)
+            print(
+                f"[EUROPEPMC] path_check exists={p.exists()} is_dir={p.is_dir()} is_file={p.is_file()} path={str(p)!r}",
+                flush=True,
+            )
             if p.is_dir():
+                print(f"[EUROPEPMC] connecting Chroma collection={settings.external_chroma_collection!r}", flush=True)
                 chroma_ext = connect_chroma(settings.external_rag_db_path, collection_name=settings.external_chroma_collection)
                 try:
+                    print("[EUROPEPMC] Chroma retrieval start", flush=True)
                     docs = retrieve_top_n_chroma(
                         chroma_ext,
                         oai=oai,
@@ -199,6 +212,7 @@ def chat(req: ChatRequest) -> ChatResponse:
                         top_n=int(settings.external_candidates),
                     )
                     external_docs = docs[: max(0, int(settings.final_external_k))]
+                    print(f"[EUROPEPMC] Chroma retrieval done candidates={len(docs)} final={len(external_docs)}", flush=True)
                     dbg(f"External(Chroma) docs={len(docs)} final={len(external_docs)}")
                 except Exception as e:
                     dbg(f"External(Chroma) retrieval error: {type(e).__name__}: {str(e).strip()}")
