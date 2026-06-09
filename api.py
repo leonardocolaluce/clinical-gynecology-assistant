@@ -215,9 +215,11 @@ def chat(req: ChatRequest) -> ChatResponse:
                     print(f"[EUROPEPMC] Chroma retrieval done candidates={len(docs)} final={len(external_docs)}", flush=True)
                     dbg(f"External(Chroma) docs={len(docs)} final={len(external_docs)}")
                 except Exception as e:
+                    print(f"[EUROPEPMC] Chroma error {type(e).__name__}: {str(e)}", flush=True)
                     dbg(f"External(Chroma) retrieval error: {type(e).__name__}: {str(e).strip()}")
                     external_docs = []
             else:
+                print("[EUROPEPMC] using SQLite external retriever", flush=True)
                 ext_conn = connect_external(settings.external_rag_db_path)
                 try:
                     q_vec = oai.embed(model=settings.openai_embed_model, text=req.message)
