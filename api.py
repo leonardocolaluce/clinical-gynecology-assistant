@@ -115,7 +115,13 @@ def chat(req: ChatRequest) -> ChatResponse:
     db.init_db(conn)
 
     session_id = (req.session_id or "").strip() or "default"
-    history = db.get_recent_messages(conn, session_id=session_id, limit=10)
+    history = db.get_recent_messages(conn, session_id=session_id, limit=20)
+    print(f"[MEMORY] session_id={session_id!r} history_items={len(history)}", flush=True)
+    for idx, item in enumerate(history, start=1):
+        print(
+            f"[MEMORY] {idx} Q={item.get('question', '')[:80]!r} A={item.get('answer', '')[:80]!r}",
+            flush=True,
+        )
     message_id = db.create_message(conn, mode=req.mode, question=req.message, session_id=session_id)
 
     try:
