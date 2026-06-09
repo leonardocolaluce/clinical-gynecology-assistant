@@ -21,7 +21,7 @@ from .flow._8_answering import (
     extract_cited_pmids,
     revise_to_meet_min_citations,
 )
-from .flow._4_router import allow_direct_without_sources, decide_route
+from .flow._4_router import allow_direct_without_sources, contextualize_question, decide_route
 from .flow._9_external_rag import connect_external, retrieve_top_n
 from .flow._13_external_chroma import connect_chroma, retrieve_top_n_chroma
 from .flow._14_debug import dbg
@@ -138,8 +138,17 @@ def chat(req: ChatRequest) -> ChatResponse:
         )
 
         # Router (safe-by-default): only allow direct for clearly non-medical/meta queries.
+        retrieval_question = contextualize_question(
+            oai,
+            model=settings.openai_chat_model,
+            question=req.message,
+            history=history,
+        )
+        print(f"[CONTEXT] original={req.message!r} retrieval_question={retrieval_question!r}", flush=True)
+        
+        # Router (safe-by-default): only allow direct for clearly non-medical/meta queries.
         try:
-            decision = decide_route(oai, model=settings.openai_chat_model, question=req.message)
+            decision = decide_route(oai, model=settings.openai_chat_model, question=retrieval_question)
         except Exception:
             decision = None
         use_direct = bool(decision and decision.route == "direct" and allow_direct_without_sources(req.message))
@@ -162,7 +171,7 @@ def chat(req: ChatRequest) -> ChatResponse:
         if decision and decision.route == "pubmed" and decision.term:
             terms = [decision.term]
         else:
-            terms = list(build_pubmed_term_candidates(req.message))
+            terms = list(build_pubmed_term_candidates(retrieval_question))
 
         for term in terms:
             query_used = term
@@ -192,7 +201,7 @@ def chat(req: ChatRequest) -> ChatResponse:
             reranked = select_top_k(
                 oai,
                 embed_model=settings.openai_embed_model,
-                question=req.message,
+                question=retrieval_question,
                 papers=papers,
                 top_k=int(settings.top_k),
             )
@@ -217,7 +226,7 @@ def chat(req: ChatRequest) -> ChatResponse:
                         chroma_ext,
                         oai=oai,
                         embed_model=settings.openai_embed_model,
-                        question=req.message,
+                        question=retrieval_question,
                         top_n=int(settings.external_candidates),
                     )
                     external_docs = docs[: max(0, int(settings.final_external_k))]
