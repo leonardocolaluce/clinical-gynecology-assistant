@@ -65,6 +65,7 @@ def init_db(conn: sqlite3.Connection) -> None:
           created_at INTEGER NOT NULL,
           mode TEXT NOT NULL,
           question TEXT NOT NULL,
+          session_id TEXT,
           answer TEXT,
           error TEXT,
           retrieval_run_id INTEGER,
@@ -91,11 +92,11 @@ def create_retrieval_run(conn: sqlite3.Connection, *, query: str, found_count: i
     return RetrievalRun(id=run_id, created_at=now, query=query, found_count=int(found_count))
 
 
-def create_message(conn: sqlite3.Connection, *, mode: str, question: str) -> int:
+def create_message(conn: sqlite3.Connection, *, mode: str, question: str, session_id: str | None = None) -> int:
     now = int(time.time())
     cur = conn.execute(
-        "INSERT INTO messages(created_at, mode, question) VALUES(?,?,?)",
-        (now, mode, question),
+        "INSERT INTO messages(created_at, mode, question, session_id) VALUES(?,?,?,?)",
+        (now, mode, question, session_id),
     )
     conn.commit()
     return int(cur.lastrowid)
@@ -123,6 +124,22 @@ def finalize_message_error(conn: sqlite3.Connection, *, message_id: int, error: 
     )
     conn.commit()
 
+def get_recent_messages(conn: sqlite3.Connection, *, session_id: str, limit: int = 10) -> list[dict[str, str]]:
+    rows = conn.execute(
+        """
+        SELECT question, answer
+        FROM messages
+        WHERE session_id=? AND answer IS NOT NULL
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (session_id, int(limit)),
+    ).fetchall()
+
+    out: list[dict[str, str]] = []
+    for row in reversed(rows):
+        out.append({"question": str(row["question"] or ""), "answer": str(row["answer"] or "")})
+    return out
 
 def get_cached_papers(conn: sqlite3.Connection, pmids: Iterable[str]) -> dict[str, Paper]:
     pmid_list = [p for p in (pmids or []) if p]
