@@ -66,7 +66,7 @@ def retrieve_top_n_chroma(
                 "Set EXTERNAL_CHROMA_COLLECTION to a valid name."
             ) from e
 
-    res = col.query(query_embeddings=[q_vec], n_results=n, include=["documents", "metadatas", "ids"])
+    res = col.query(query_embeddings=[q_vec], n_results=n, include=["documents", "metadatas"])
     ids = (res.get("ids") or [[]])[0] or []
     docs = (res.get("documents") or [[]])[0] or []
     metas = (res.get("metadatas") or [[]])[0] or []
