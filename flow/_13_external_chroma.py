@@ -25,6 +25,17 @@ def connect_chroma(persist_dir: str, *, collection_name: str = "default") -> Chr
         )
     return ChromaExternal(persist_dir=str(p), collection_name=str(collection_name or "default"))
 
+def _embed_local_384(text: str) -> list[float]:
+    try:
+        from sentence_transformers import SentenceTransformer
+    except Exception as e:
+        raise RuntimeError("sentence-transformers is required for 384-dim Chroma retrieval.") from e
+
+    if not hasattr(_embed_local_384, "_model"):
+        _embed_local_384._model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+
+    vec = _embed_local_384._model.encode(text or "", normalize_embeddings=True)
+    return [float(x) for x in vec]
 
 def retrieve_top_n_chroma(
     chroma: ChromaExternal,
@@ -45,7 +56,7 @@ def retrieve_top_n_chroma(
         raise RuntimeError("chromadb is not installed. Install it to enable External RAG via Chroma.") from e
 
     n = max(1, int(top_n))
-    q_vec = oai.embed(model=embed_model, text=question)
+    q_vec = _embed_local_384(question)
 
     client = chromadb.PersistentClient(path=chroma.persist_dir)
     try:
