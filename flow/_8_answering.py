@@ -21,15 +21,24 @@ class Answer:
 
 _PMID_RE = re.compile(r"\[PMID:\s*(\d+)\]", re.IGNORECASE)
 
+def _format_history(history: list[dict[str, str]] | None) -> str:
+    if not history:
+        return "<nessuna conversazione precedente>"
+    blocks = []
+    for item in history[-10:]:
+        q = (item.get("question") or "").strip()
+        a = (item.get("answer") or "").strip()
+        blocks.append(f"Utente: {q}\nAssistente: {a}")
+    return "\n\n".join(blocks)
 
-def answer_direct(oai: OpenAIClient, *, model: str, question: str, mode: str) -> Answer:
+def answer_direct(oai: OpenAIClient, *, model: str, question: str, mode: str, history: list[dict[str, str]] | None = None) -> Answer:
     sys = direct_system_prompt(mode=mode)
     text = oai.chat(
         model=model,
         temperature=0.4,
         messages=[
             {"role": "system", "content": sys},
-            {"role": "user", "content": question},
+            {"role": "user", "content": f"Conversazione precedente:\n{_format_history(history)}\n\nDomanda attuale:\n{question}"},
         ],
     )
     return Answer(text=(text or "").strip())
