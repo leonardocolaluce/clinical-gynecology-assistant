@@ -139,7 +139,7 @@ def chat(req: ChatRequest) -> ChatResponse:
         use_direct = bool(decision and decision.route == "direct" and allow_direct_without_sources(req.message))
         if use_direct:
             run = db.create_retrieval_run(conn, query="direct", found_count=0, pmids=[])
-            ans = answer_direct(oai, model=settings.openai_chat_model, question=req.message, mode=req.mode)
+            ans = answer_direct(oai, model=settings.openai_chat_model, question=req.message, mode=req.mode, history=history)
             answer_text = (ans.text or "").strip()
             cited_pmids: list[str] = []
             citations: list[Citation] = []
@@ -243,6 +243,7 @@ def chat(req: ChatRequest) -> ChatResponse:
                 model=settings.openai_chat_model,
                 question=req.message,
                 mode=req.mode,
+                history=history,
                 disclaimer=settings.disclaimer,
                 pubmed_papers=papers,
                 external_docs=external_docs,
@@ -254,6 +255,7 @@ def chat(req: ChatRequest) -> ChatResponse:
                 model=settings.openai_chat_model,
                 question=req.message,
                 mode=req.mode,
+                history=history,
                 disclaimer=settings.disclaimer,
                 papers=papers,
             )
