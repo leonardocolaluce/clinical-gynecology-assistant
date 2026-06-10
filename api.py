@@ -44,6 +44,7 @@ class GynSuggestionOut(BaseModel):
     emails: Optional[str] = None
     rating: Optional[float] = None
     reviews: Optional[int] = None
+    distance_km: Optional[float] = None
 
 class Citation(BaseModel):
     pmid: str
@@ -334,10 +335,12 @@ def build_gyn_suggestions(req: ChatRequest) -> list[GynSuggestionOut]:
     if req.mode == "doctor" or not has_location:
         return []
 
-    if not req.city:
-        return []
-
-    raw_suggestions = suggest_top3(city=req.city, address_hint=req.address_hint)
+    raw_suggestions = suggest_top3(
+        city=req.city,
+        address_hint=req.address_hint,
+        latitude=req.latitude,
+        longitude=req.longitude,
+    )
     return [
         GynSuggestionOut(
             name=s.name,
@@ -347,6 +350,7 @@ def build_gyn_suggestions(req: ChatRequest) -> list[GynSuggestionOut]:
             emails=s.emails,
             rating=s.rating,
             reviews=s.reviews,
+            distance_km=s.distance_km,
         )
         for s in raw_suggestions
     ]
