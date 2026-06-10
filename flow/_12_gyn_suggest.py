@@ -1,10 +1,11 @@
-from __future__ import annotations
-
-import os
-import sqlite3
+import math
+import re
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import Optional
+
+import openpyxl
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,7 @@ class GynSuggestion:
     emails: Optional[str] = None
     rating: Optional[float] = None
     reviews: Optional[int] = None
+    distance_km: Optional[float] = None
 
 
 def suggest_top3(
@@ -93,24 +95,89 @@ def suggest_top3(
     ]
 
 
-def _opt_str(v: object) -> Optional[str]:
-    if v is None:
+def _load_rows(path: Path) -> list[dict]:
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    ws = wb.active
+    out = []
+
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        name = _str(row[0])
+        phone = _str(row[1])
+        address = _str(row[3])
+        website = _str(row[5])
+        emails = _str(row[6])
+        reviews = _float(row[7])
+        rating = _float(row[8])
+        latitude = _coord(row[9])
+        longitude = _coord(row[10])
+
+        if not name or not address:
+            continue
+
+        out.append(
+            {
+                "name": name,
+                "phone": phone,
+                "address": address,
+                "website": website,
+                "emails": emails,
+                "reviews": int(reviews) if reviews is not None else None,
+                "rating": rating,
+                "latitude": latitude,
+                "longitude": longitude,
+            }
+        )
+
+    return out
+
+
+def _str(value: object) -> Optional[str]:
+    if value is None:
         return None
-    s = str(v).strip()
-    return s or None
+    text = str(value).strip()
+    return text or None
 
 
-def _norm_city(city: str | None) -> str:
-    c = (city or "").strip().lower()
-    out: list[str] = []
-    prev_space = False
-    for ch in c:
-        if ch.isalnum():
-            out.append(ch)
-            prev_space = False
-        else:
-            if not prev_space:
-                out.append(" ")
-                prev_space = True
-    return " ".join("".join(out).split())
+def _float(value: object) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(str(value).strip())
+    except Exception:
+        return None
 
+
+def _coord(value: object) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, timedelta):
+        return value.days + value.seconds / 86400
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
+def _norm(value: str | None) -> str:
+    text = (value or "").lower()
+    text = re.sub(r"[^a-z0-9àèéìòù]+", " ", text)
+    return " ".join(text.split())
+
+
+def _token_overlap(a: str, b: str) -> float:
+    ta = {t for t in a.split() if len(t) >= 3}
+    tb = {t for t in b.split() if len(t) >= 3}
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta)
+
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    radius = 6371.0
+    p1 = math.radians(lat1)
+    p2 = math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
