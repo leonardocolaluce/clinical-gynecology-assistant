@@ -18,61 +18,79 @@ class GynSuggestion:
     reviews: Optional[int] = None
 
 
-def suggest_top3(*, city: str, address_hint: str | None = None, db_path: str | None = None) -> list[GynSuggestion]:
+def suggest_top3(
+    *,
+    city: str | None = None,
+    address_hint: str | None = None,
+    latitude: float | None = None,
+    longitude: float | None = None,
+    xlsx_path: str | None = None,
+) -> list[GynSuggestion]:
     """
-    Suggests up to 3 gynecologists.
-    Current heuristic (no lat/long): match by city, optional address substring, rank by rating then reviews.
+    Suggests up to 3 gynecologists using city, address text and/or latitude-longitude.
+    Works if the user provides at least one of: city, address_hint, latitude+longitude.
     """
-    city_norm = _norm_city(city)
-    if not city_norm:
-        return []
-
-    path = Path(
-        db_path
-        or os.getenv("GINECOLOGHE_DB_PATH")
-        or (Path(__file__).resolve().parents[1] / "data" / "ginecologhe.sqlite3")
-    )
+    path = Path(xlsx_path or Path(__file__).resolve().parents[1] / "ginecologhe_donna_filtrate.xlsx")
     if not path.is_file():
         return []
 
-    conn = sqlite3.connect(str(path))
-    try:
-        conn.row_factory = sqlite3.Row
-        params: list[object] = [city_norm]
-        where = "city_norm = ?"
-        if address_hint and address_hint.strip():
-            where += " AND lower(address) LIKE ?"
-            params.append(f"%{address_hint.strip().lower()}%")
+    rows = _load_rows(path)
+    if not rows:
+        return []
 
-        rows = conn.execute(
-            f"""
-            SELECT business_name, address, phone, website, emails, rating, reviews
-            FROM gynecologists
-            WHERE {where}
-            ORDER BY
-              CASE WHEN rating IS NULL THEN 1 ELSE 0 END,
-              rating DESC,
-              CASE WHEN reviews IS NULL THEN 1 ELSE 0 END,
-              reviews DESC
-            LIMIT 3
-            """,
-            params,
-        ).fetchall()
-        return [
-            GynSuggestion(
-                name=str(r["business_name"] or "").strip(),
-                address=str(r["address"] or "").strip(),
-                phone=_opt_str(r["phone"]),
-                website=_opt_str(r["website"]),
-                emails=_opt_str(r["emails"]),
-                rating=float(r["rating"]) if r["rating"] is not None else None,
-                reviews=int(r["reviews"]) if r["reviews"] is not None else None,
-            )
-            for r in rows
-            if str(r["business_name"] or "").strip() and str(r["address"] or "").strip()
-        ]
-    finally:
-        conn.close()
+    city_norm = _norm(city)
+    address_norm = _norm(address_hint)
+    has_coords = latitude is not None and longitude is not None
+
+    if not city_norm and not address_norm and not has_coords:
+        return []
+
+    scored = []
+    for item in rows:
+        score = 0.0
+        distance_km = None
+
+        item_address_norm = _norm(item["address"])
+
+        if city_norm and city_norm in item_address_norm:
+            score += 100
+
+        if address_norm:
+            score += _token_overlap(address_norm, item_address_norm) * 80
+
+        if has_coords and item["latitude"] is not None and item["longitude"] is not None:
+            distance_km = _haversine_km(latitude, longitude, item["latitude"], item["longitude"])
+            score += max(0, 150 - distance_km)
+
+        rating = item["rating"] or 0
+        reviews = item["reviews"] or 0
+        score += rating * 5
+        score += min(reviews, 200) / 20
+
+        if score > 0:
+            scored.append((score, distance_km, item))
+
+    scored.sort(
+        key=lambda x: (
+            x[1] is None,
+            x[1] if x[1] is not None else 999999,
+            -x[0],
+        )
+    )
+
+    return [
+        GynSuggestion(
+            name=item["name"],
+            address=item["address"],
+            phone=item["phone"],
+            website=item["website"],
+            emails=item["emails"],
+            rating=item["rating"],
+            reviews=item["reviews"],
+            distance_km=round(distance_km, 1) if distance_km is not None else None,
+        )
+        for _, distance_km, item in scored[:3]
+    ]
 
 
 def _opt_str(v: object) -> Optional[str]:
