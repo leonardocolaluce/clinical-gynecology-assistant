@@ -159,10 +159,13 @@ def chat(req: ChatRequest) -> ChatResponse:
             cited_pmids: list[str] = []
             citations: list[Citation] = []
             db.finalize_message_ok(conn, message_id=message_id, answer=answer_text, retrieval_run_id=run.id, cited_pmids=cited_pmids)
+            suggestions = build_gyn_suggestions(req)
+
             return ChatResponse(
                 answer=answer_text,
                 retrieval=RetrievalInfo(query="direct", found=0, pmids=[], cached=0, fetched=0),
                 citations=citations,
+                suggestions=suggestions,
             )
 
         pmids: list[str] = []
@@ -300,23 +303,7 @@ def chat(req: ChatRequest) -> ChatResponse:
             flush=True,
         )
 
-        suggestions: list[GynSuggestionOut] = []
-        has_location = bool(req.city or req.address_hint or req.latitude is not None or req.longitude is not None)
-
-        if req.mode != "doctor" and has_location and req.city:
-            raw_suggestions = suggest_top3(city=req.city, address_hint=req.address_hint)
-            suggestions = [
-                GynSuggestionOut(
-                    name=s.name,
-                    address=s.address,
-                    phone=s.phone,
-                    website=s.website,
-                    emails=s.emails,
-                    rating=s.rating,
-                    reviews=s.reviews,
-                )
-                for s in raw_suggestions
-            ]
+        suggestions = build_gyn_suggestions(req)
 
         return ChatResponse(
             answer=answer_text,
@@ -336,6 +323,33 @@ def chat(req: ChatRequest) -> ChatResponse:
     finally:
         conn.close()
 
+def build_gyn_suggestions(req: ChatRequest) -> list[GynSuggestionOut]:
+    has_location = bool(
+        req.city
+        or req.address_hint
+        or req.latitude is not None
+        or req.longitude is not None
+    )
+
+    if req.mode == "doctor" or not has_location:
+        return []
+
+    if not req.city:
+        return []
+
+    raw_suggestions = suggest_top3(city=req.city, address_hint=req.address_hint)
+    return [
+        GynSuggestionOut(
+            name=s.name,
+            address=s.address,
+            phone=s.phone,
+            website=s.website,
+            emails=s.emails,
+            rating=s.rating,
+            reviews=s.reviews,
+        )
+        for s in raw_suggestions
+    ]
 
 def _build_citations(conn: Any, pmids: list[str]) -> list[Citation]:
     out: list[Citation] = []
