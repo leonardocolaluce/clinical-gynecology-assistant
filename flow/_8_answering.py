@@ -20,6 +20,7 @@ class Answer:
 
 
 _PMID_RE = re.compile(r"\[PMID:\s*(\d+)\]", re.IGNORECASE)
+_DOC_RE = re.compile(r"\[DOC:\s*([^\]]+)\]", re.IGNORECASE)
 
 def _format_history(history: list[dict[str, str]] | None) -> str:
     if not history:
@@ -146,7 +147,16 @@ def extract_cited_pmids(text: str) -> list[str]:
             out.append(pmid)
     return out
 
-
+def extract_cited_doc_ids(text: str) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for m in _DOC_RE.finditer(text or ""):
+        doc_id = (m.group(1) or "").strip()
+        if doc_id and doc_id not in seen:
+            seen.add(doc_id)
+            out.append(doc_id)
+    return out
+    
 def revise_to_meet_min_citations(
     oai: OpenAIClient,
     *,
