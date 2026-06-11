@@ -19,6 +19,7 @@ from .flow._8_answering import (
     answer_with_pubmed,
     answer_with_pubmed_and_external,
     extract_cited_pmids,
+    extract_cited_doc_ids,
     revise_to_meet_min_citations,
 )
 from .flow._4_router import allow_direct_without_sources, contextualize_question, decide_route
@@ -47,8 +48,10 @@ class GynSuggestionOut(BaseModel):
     distance_km: Optional[float] = None
 
 class Citation(BaseModel):
-    pmid: str
-    url: str
+    source: str = "pubmed"
+    pmid: Optional[str] = None
+    doc_id: Optional[str] = None
+    url: Optional[str] = None
     title: str
     year: Optional[str] = None
     journal: Optional[str] = None
@@ -281,7 +284,7 @@ def chat(req: ChatRequest) -> ChatResponse:
             answer_text = (ans.text or "").strip()
 
         # Best-effort second pass: if citations are too few, ask the model to revise (without inventing).
-        if int(settings.min_distinct_citations) > 1:
+        if not external_docs and int(settings.min_distinct_citations) > 1:
             revised = revise_to_meet_min_citations(
                 oai,
                 model=settings.openai_chat_model,
@@ -295,7 +298,10 @@ def chat(req: ChatRequest) -> ChatResponse:
             answer_text = (revised.text or "").strip()
 
         cited_pmids = extract_cited_pmids(answer_text)
+        cited_doc_ids = extract_cited_doc_ids(answer_text)
+        
         citations = _build_citations(conn, cited_pmids)
+        citations.extend(_build_external_citations(external_docs, cited_doc_ids))
 
         db.finalize_message_ok(conn, message_id=message_id, answer=answer_text, retrieval_run_id=run.id, cited_pmids=cited_pmids)
 
@@ -363,6 +369,7 @@ def _build_citations(conn: Any, pmids: list[str]) -> list[Citation]:
             continue
         out.append(
             Citation(
+                source="pubmed",
                 pmid=p.pmid,
                 url=p.pubmed_url,
                 title=p.title,
@@ -371,4 +378,24 @@ def _build_citations(conn: Any, pmids: list[str]) -> list[Citation]:
                 doi=p.doi,
             )
         )
+    return out
+
+def _build_external_citations(external_docs: list[Any], doc_ids: list[str]) -> list[Citation]:
+    by_id = {str(doc.doc_id): doc for doc in external_docs or []}
+    out: list[Citation] = []
+
+    for doc_id in doc_ids:
+        doc = by_id.get(str(doc_id))
+        if not doc:
+            continue
+
+        out.append(
+            Citation(
+                source="external_rag",
+                doc_id=str(doc.doc_id),
+                title=doc.title or str(doc.doc_id),
+                url=doc.url,
+            )
+        )
+
     return out
