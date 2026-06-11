@@ -299,6 +299,7 @@ def chat(req: ChatRequest) -> ChatResponse:
 
         cited_pmids = extract_cited_pmids(answer_text)
         cited_doc_ids = extract_cited_doc_ids(answer_text)
+        print(f"[CITATIONS] pmids={len(cited_pmids)} docs={len(cited_doc_ids)} doc_ids={cited_doc_ids[:5]}", flush=True)
         
         citations = _build_citations(conn, cited_pmids)
         citations.extend(_build_external_citations(external_docs, cited_doc_ids))
