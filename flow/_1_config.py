@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 
-_DEFAULT_CHROMA_DRIVE_PATH = r"G:\Il mio Drive\_rag_vector_db_MISSING_ONLY"
+_DEFAULT_CHROMA_DRIVE_PATH = r"C:\apps\rag_dbs\europepmc_chroma"
 
 
 @dataclass(frozen=True)
@@ -23,7 +23,7 @@ class Settings:
     top_k: int = 50
     min_distinct_citations: int = 2
     external_rag_db_path: str = ""
-    external_chroma_collection: str = "default"
+    external_chroma_collection: str = "gynecology_rag_missing"
     external_candidates: int = 50
     final_pubmed_k: int = 50
     final_external_k: int = 50
@@ -113,7 +113,7 @@ def load_settings() -> Settings:
         if p.exists() and p.is_dir():
             external_rag_db_path = str(p)
     external_chroma_collection = (os.getenv("EXTERNAL_CHROMA_COLLECTION") or "").strip() or (
-        _get_conf(conf, "EXTERNAL_CHROMA_COLLECTION") or "default"
+        _get_conf(conf, "EXTERNAL_CHROMA_COLLECTION") or "gynecology_rag_missing"
     )
 
     return Settings(
