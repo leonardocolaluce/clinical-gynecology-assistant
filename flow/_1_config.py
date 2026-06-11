@@ -16,17 +16,17 @@ class Settings:
     ncbi_api_key: str
     ncbi_tool: str
     ncbi_email: str
-    pubmed_retmax: int = 50
+    pubmed_retmax: int = 15
     pubmed_timeout_s: int = 30
 
     # Retrieval
-    top_k: int = 50
+    top_k: int = 15
     min_distinct_citations: int = 2
     external_rag_db_path: str = ""
     external_chroma_collection: str = "gynecology_rag_missing"
-    external_candidates: int = 50
-    final_pubmed_k: int = 50
-    final_external_k: int = 50
+    external_candidates: int = 15
+    final_pubmed_k: int = 15
+    final_external_k: int = 15
 
     # OpenAI (required for this CLI: "only GPT answers")
     openai_api_key: str = ""
@@ -120,15 +120,15 @@ def load_settings() -> Settings:
         ncbi_api_key=ncbi_api_key,
         ncbi_tool=(os.getenv("NCBI_TOOL") or "chatbot_gin_cli").strip() or "chatbot_gin_cli",
         ncbi_email=(os.getenv("NCBI_EMAIL") or "dev@example.com").strip() or "dev@example.com",
-        pubmed_retmax=int((os.getenv("PUBMED_RETMAX") or "50").strip() or "50"),
+        pubmed_retmax=int((os.getenv("PUBMED_RETMAX") or "15").strip() or "15"),
         pubmed_timeout_s=int((os.getenv("PUBMED_TIMEOUT_S") or "30").strip() or "30"),
-        top_k=int((os.getenv("TOP_K") or "50").strip() or "50"),
+        top_k=int((os.getenv("TOP_K") or "15").strip() or "15"),
         min_distinct_citations=int((os.getenv("MIN_DISTINCT_CITATIONS") or "2").strip() or "2"),
         external_rag_db_path=external_rag_db_path,
         external_chroma_collection=external_chroma_collection,
-        external_candidates=int((os.getenv("EXTERNAL_CANDIDATES") or "50").strip() or "50"),
-        final_pubmed_k=int((os.getenv("FINAL_PUBMED_K") or "50").strip() or "50"),
-        final_external_k=int((os.getenv("FINAL_EXTERNAL_K") or "50").strip() or "50"),
+        external_candidates=int((os.getenv("EXTERNAL_CANDIDATES") or "15").strip() or "15"),
+        final_pubmed_k=int((os.getenv("FINAL_PUBMED_K") or "15").strip() or "15"),
+        final_external_k=int((os.getenv("FINAL_EXTERNAL_K") or "15").strip() or "15"),
         openai_api_key=openai_api_key,
         openai_base_url=(os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1").strip()
         or "https://api.openai.com/v1",
