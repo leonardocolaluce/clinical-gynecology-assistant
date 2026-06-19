@@ -36,7 +36,7 @@ class Settings:
 
     disclaimer: str = (
         "Nota: risposta a scopo informativo/educativo; non sostituisce il parere medico. "
-        "Per diagnosi o terapia rivolgiti a un/una ginecologo/a."
+        "Per diagnosi o terapia rivolgiti a una ginecologa."
     )
 
 
