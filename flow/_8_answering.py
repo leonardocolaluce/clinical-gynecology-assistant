@@ -25,6 +25,11 @@ _DOC_RE = re.compile(r"\[DOC:\s*([^\]]+)\]", re.IGNORECASE)
 def _clean_chat_text(text: str) -> str:
     return (text or "").replace("**", "").replace("*", "").strip()
 
+def _max_tokens_for_mode(mode: str) -> int | None:
+    if (mode or "").strip().lower() in {"doctor", "medico", "ginecologo", "ginecologa"}:
+        return 1800
+    return None
+
 def _format_history(history: list[dict[str, str]] | None) -> str:
     if not history:
         return "<nessuna conversazione precedente>"
@@ -40,6 +45,7 @@ def answer_direct(oai: OpenAIClient, *, model: str, question: str, mode: str, hi
     text = oai.chat(
         model=model,
         temperature=0.4,
+        max_tokens=_max_tokens_for_mode(mode),
         messages=[
             {"role": "system", "content": sys},
             {"role": "user", "content": f"Conversazione precedente:\n{_format_history(history)}\n\nDomanda attuale:\n{question}"},
@@ -66,6 +72,7 @@ def answer_with_pubmed(
     text = oai.chat(
         model=model,
         temperature=0.2,
+        max_tokens=_max_tokens_for_mode(mode),
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -118,6 +125,7 @@ def answer_with_pubmed_and_external(
     text = oai.chat(
         model=model,
         temperature=0.2,
+        max_tokens=_max_tokens_for_mode(mode),
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -202,6 +210,7 @@ def revise_to_meet_min_citations(
     text = oai.chat(
         model=model,
         temperature=0.2,
+        max_tokens=_max_tokens_for_mode(mode),
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -234,6 +243,7 @@ def answer_clarification(
     text = oai.chat(
         model=model,
         temperature=0.3,
+        max_tokens=_max_tokens_for_mode(mode),
         messages=[
             {
                 "role": "system",
@@ -272,6 +282,7 @@ def answer_with_gyn_area_offer(
     text = oai.chat(
         model=model,
         temperature=0.3,
+        max_tokens=_max_tokens_for_mode(mode),
         messages=[
             {
                 "role": "system",
@@ -305,6 +316,7 @@ def answer_gyn_suggestions_result(
     text = oai.chat(
         model=model,
         temperature=0.3,
+        max_tokens=_max_tokens_for_mode(mode),
         messages=[
             {
                 "role": "system",
