@@ -55,6 +55,14 @@ def _style_for_mode(mode: str) -> str:
     return load_prompt_styles()[normalize_mode(mode)]
 
 
+_CONVERSATIONAL_RULES = """
+- Rispondi in modo conversazionale, naturale e discorsivo.
+- Evita risposte schematiche, elenchi numerati e titoletti salvo richiesta esplicita dell'utente.
+- Non usare Markdown: niente asterischi, grassetti, bullet point o titoli formattati.
+- Preferisci brevi paragrafi fluidi, con tono umano e chiaro.
+""".strip()
+
+
 def direct_system_prompt(*, mode: str) -> str:
     style = _style_for_mode(mode)
 
@@ -65,8 +73,7 @@ def direct_system_prompt(*, mode: str) -> str:
         - Rispondi naturalmente e in modo utile.
         - Se la domanda e' medica, sii cauto: non fare diagnosi o terapie personalizzate.
         - Se mancano informazioni, fai domande di chiarimento.
-        - Quando inviti a rivolgersi a una figura specialistica, usa sempre il femminile: "ginecologa", "specialista", "professionista".
-        - Non usare mai "ginecologo", "dottore", "medico" per riferirti alla professionista a cui rivolgersi.
+        {_CONVERSATIONAL_RULES}
         {style}
         """
     ).strip()
@@ -89,8 +96,7 @@ def pubmed_system_prompt(*, mode: str, disclaimer: str) -> str:
         - Vietate formulazioni speculative (es. "potrebbe", "forse", "probabilmente") se non supportate da una citazione [PMID:xxxxxx] nella stessa frase.
         - Cita un PMID solo se quello studio supporta direttamente l'asserzione specifica; altrimenti dichiara che le fonti non lo coprono.
         - Alla fine aggiungi questa nota: {disclaimer}
-        - Quando inviti a rivolgersi a una figura specialistica, usa sempre il femminile: "ginecologa", "specialista", "professionista".
-        - Non usare mai "ginecologo", "dottore", "medico" per riferirti alla professionista a cui rivolgersi.
+        {_CONVERSATIONAL_RULES}
         {style}
         """
     ).strip()
@@ -114,8 +120,7 @@ def pubmed_external_system_prompt(*, mode: str, disclaimer: str) -> str:
         - Vietate formulazioni speculative (es. "potrebbe", "forse", "probabilmente") se non supportate da una citazione nella stessa frase.
         - Cita un riferimento solo se supporta direttamente l'asserzione specifica; altrimenti dichiara che le fonti non lo coprono.
         - Alla fine aggiungi questa nota: {disclaimer}
-        - Quando inviti a rivolgersi a una figura specialistica, usa sempre il femminile: "ginecologa", "specialista", "professionista".
-        - Non usare mai "ginecologo", "dottore", "medico" per riferirti alla professionista a cui rivolgersi.
+        {_CONVERSATIONAL_RULES}
         {style}
         """
     ).strip()
@@ -137,8 +142,7 @@ def revise_system_prompt(*, mode: str, disclaimer: str, min_n: int, allowed_pmid
         - Vietate formulazioni speculative (es. "potrebbe", "forse", "probabilmente") se non supportate da una citazione [PMID:xxxxxx] nella stessa frase.
         - Cita un PMID solo se quello studio supporta direttamente l'asserzione specifica; altrimenti dichiara che le fonti non lo coprono.
         - Alla fine aggiungi questa nota: {disclaimer}
-        - Quando inviti a rivolgersi a una figura specialistica, usa sempre il femminile: "ginecologa", "specialista", "professionista".
-        - Non usare mai "ginecologo", "dottore", "medico" per riferirti alla professionista a cui rivolgersi.
+        {_CONVERSATIONAL_RULES}
         {style}
         """
     ).strip()
