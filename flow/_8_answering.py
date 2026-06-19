@@ -22,6 +22,9 @@ class Answer:
 _PMID_RE = re.compile(r"\[PMID:\s*(\d+)\]", re.IGNORECASE)
 _DOC_RE = re.compile(r"\[DOC:\s*([^\]]+)\]", re.IGNORECASE)
 
+def _clean_chat_text(text: str) -> str:
+    return (text or "").replace("**", "").replace("*", "").strip()
+
 def _format_history(history: list[dict[str, str]] | None) -> str:
     if not history:
         return "<nessuna conversazione precedente>"
@@ -42,7 +45,7 @@ def answer_direct(oai: OpenAIClient, *, model: str, question: str, mode: str, hi
             {"role": "user", "content": f"Conversazione precedente:\n{_format_history(history)}\n\nDomanda attuale:\n{question}"},
         ],
     )
-    return Answer(text=(text or "").strip())
+    return Answer(text=_clean_chat_text(text))
 
 
 def answer_with_pubmed(
@@ -68,7 +71,7 @@ def answer_with_pubmed(
             {"role": "user", "content": user},
         ],
     )
-    return Answer(text=(text or "").strip())
+    return Answer(text=_clean_chat_text(text))
 
 
 def _format_context(papers: list[Paper]) -> str:
@@ -120,7 +123,7 @@ def answer_with_pubmed_and_external(
             {"role": "user", "content": user},
         ],
     )
-    return Answer(text=(text or "").strip())
+    return Answer(text=_clean_chat_text(text))
 
 
 def _format_external_context(docs: list[ExternalDoc]) -> str:
@@ -174,13 +177,13 @@ def revise_to_meet_min_citations(
     """
     min_n = max(0, int(min_distinct_pmids))
     if min_n <= 1:
-        return Answer(text=(draft_answer or "").strip())
+        return Answer(text=_clean_chat_text(draft_answer))
 
     cited = extract_cited_pmids(draft_answer or "")
     if len(set(cited)) >= min_n:
-        return Answer(text=(draft_answer or "").strip())
+        return Answer(text=_clean_chat_text(draft_answer))
     if len(papers or []) < min_n:
-        return Answer(text=(draft_answer or "").strip())
+        return Answer(text=_clean_chat_text(draft_answer))
 
     allowed_pmids = [p.pmid for p in (papers or []) if p and p.pmid]
     allowed_pmids_str = ", ".join(allowed_pmids[:200])
@@ -204,7 +207,7 @@ def revise_to_meet_min_citations(
             {"role": "user", "content": user},
         ],
     )
-    return Answer(text=(text or "").strip())
+    return Answer(text=_clean_chat_text(text))
 
 
 def answer_clarification(
@@ -256,7 +259,7 @@ def answer_clarification(
             },
         ],
     )
-    return Answer(text=(text or "").strip())
+    return Answer(text=_clean_chat_text(text))
 
 
 def answer_with_gyn_area_offer(
@@ -288,7 +291,7 @@ def answer_with_gyn_area_offer(
             },
         ],
     )
-    return Answer(text=(text or "").strip())
+    return Answer(text=_clean_chat_text(text))
 
 
 def answer_gyn_suggestions_result(
@@ -325,4 +328,4 @@ def answer_gyn_suggestions_result(
             },
         ],
     )
-    return Answer(text=(text or "").strip())
+    return Answer(text=_clean_chat_text(text))
