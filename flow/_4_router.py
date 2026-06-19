@@ -21,9 +21,12 @@ Decidi se serve consultare PubMed prima di rispondere.
 
 Regole:
 - Se la domanda e' generale/conversazionale (saluti, "chi sei?", cose non mediche, data/ora), route="direct".
+- Se la domanda riguarda la conversazione precedente, le fonti già citate, perché sono state scelte, chi le ha scritte, o chiede chiarimenti sulla risposta precedente, route="direct".
+- Se la domanda è generale/non clinica/non ginecologica, ad esempio meteo, data, ora, identità del chatbot, funzionamento del sistema, route="direct".
 - Se la domanda e' medica/ginecologica e beneficia di evidenze/citazioni, route="pubmed".
 - Se route="pubmed", scrivi "term" in inglese: traduci/normalizza la domanda utente in termini biomedicali inglesi adatti a PubMed".
 - Se e' una domanda medica ma non richiede letteratura (es. chiarimenti sul funzionamento), route="direct".
+- Usa route="pubmed" solo per domande mediche/ginecologiche che richiedono nuove evidenze scientifiche.
 - Se route="pubmed", il campo "term" deve essere una query PubMed in inglese, specifica per la domanda utente, anche se la domanda e' in italiano. Non usare query generiche come "gynecology OR obstetrics" se la domanda contiene un tema specifico.
 
 Esempi:
