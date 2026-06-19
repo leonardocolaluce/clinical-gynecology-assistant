@@ -205,3 +205,86 @@ def revise_to_meet_min_citations(
         ],
     )
     return Answer(text=(text or "").strip())
+
+def answer_clarification(
+    oai: OpenAIClient,
+    *,
+    model: str,
+    question: str,
+    mode: str,
+    reason: str,
+    history: list[dict[str, str]] | None = None,
+) -> Answer:
+    if reason == "no_sources":
+        task = (
+            "La pipeline non ha trovato fonti scientifiche sufficienti o citazioni affidabili. "
+            "Non rispondere nel merito clinico. Spiega in modo breve che servono più dettagli "
+            "per cercare meglio nelle fonti, e fai 3-4 controdomande utili. "
+        )
+    else:
+        task = (
+            "La domanda è troppo generica per formulare una ricerca scientifica affidabile. "
+            "Non rispondere nel merito clinico. Fai 3-4 controdomande utili per chiarire il sintomo. "
+        )
+
+    text = oai.chat(
+        model=model,
+        temperature=0.3,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Sei Chatbot Gin, un assistente informativo in ambito ginecologico. "
+                    "Rispondi in italiano, con tono umano, naturale e sintetico. "
+                    "Non fare diagnosi o terapia personalizzata. "
+                    "Non chiedere età, nome, indirizzo, residenza o dati personali. "
+                    "Puoi chiedere durata, localizzazione del sintomo, andamento, sintomi associati, "
+                    "relazione con ciclo mestruale, menopausa, gravidanza, rapporti sessuali o terapie in corso. "
+                    "Quando inviti a rivolgersi a una figura specialistica usa sempre il femminile: ginecologa, specialista, professionista. "
+                    "Non usare mai ginecologo, dottore o medico per riferirti alla professionista a cui rivolgersi."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Modalità utente: {mode}\n"
+                    f"Conversazione precedente:\n{_format_history(history)}\n\n"
+                    f"Domanda attuale:\n{question}\n\n"
+                    f"Istruzione:\n{task}"
+                ),
+            },
+        ],
+    )
+    return Answer(text=(text or "").strip())
+
+
+def answer_with_gyn_area_offer(
+    oai: OpenAIClient,
+    *,
+    model: str,
+    current_answer: str,
+    mode: str,
+) -> Answer:
+    text = oai.chat(
+        model=model,
+        temperature=0.3,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Sei Chatbot Gin. Devi riscrivere la risposta in italiano mantenendola sintetica e naturale. "
+                    "Non aggiungere diagnosi o terapia. "
+                    "Aggiungi in modo fluido una proposta: se l'utente indica un'area di interesse, ad esempio città o zona, "
+                    "puoi provare a suggerire alcune ginecologhe in quell'area. "
+                    "Non chiedere indirizzo, residenza, posizione geografica o dove vive. "
+                    "Usa sempre il femminile: ginecologa, ginecologhe, specialista, professionista. "
+                    "Non usare mai ginecologo, dottore o medico per riferirti alla professionista."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Modalità utente: {mode}\n\nRisposta da rendere più naturale:\n{current_answer}",
+            },
+        ],
+    )
+    return Answer(text=(text or "").strip())
