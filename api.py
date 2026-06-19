@@ -80,6 +80,8 @@ class ChatResponse(BaseModel):
 
 class StatusMessageResponse(BaseModel):
     message: str
+    initial_delay_seconds: int = 5
+    next_delay_seconds: int
 
 class PromptConfig(BaseModel):
     patient: str
@@ -135,7 +137,10 @@ def health() -> dict[str, str]:
 
 @app.get("/chat/status-message", response_model=StatusMessageResponse)
 def chat_status_message() -> StatusMessageResponse:
-    return StatusMessageResponse(message=random.choice(STATUS_MESSAGES))
+    return StatusMessageResponse(
+        message=random.choice(STATUS_MESSAGES),
+        next_delay_seconds=random.randint(8, 13),
+    )
 
 
 @app.get("/admin/prompts", response_model=PromptConfig)
