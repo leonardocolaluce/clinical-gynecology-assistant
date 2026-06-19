@@ -13,7 +13,7 @@ _DEFAULT_STYLES = {
         "Stile menopausa: chiaro e pratico, orientato ai sintomi e alle esigenze tipiche della menopausa, "
         "senza fare diagnosi/terapia personalizzata."
     ),
-    "doctor": "Stile medico: tecnico, neutro, conciso.",
+    "doctor": "Stile medico: tecnico, neutro, dettagliato e orientato al confronto critico delle evidenze.",
 }
 
 
@@ -62,6 +62,19 @@ _CONVERSATIONAL_RULES = """
 - Preferisci brevi paragrafi fluidi, con tono umano e chiaro.
 """.strip()
 
+_DOCTOR_EVIDENCE_RULES = """
+- Per il profilo doctor, rispondi con maggiore dettaglio tecnico e clinico.
+- Per ogni fonte rilevante che citi, riassumi brevemente cosa aggiunge alla risposta.
+- Spiega perché hai scelto le fonti principali e quanto sono pertinenti alla domanda.
+- Quando citi più fonti, confrontale tra loro: indica punti concordanti, differenze, limiti e incertezze.
+- Se le fonti disponibili sono eterogenee o deboli, dichiaralo esplicitamente.
+- Usa più riferimenti distinti quando sono disponibili e pertinenti, senza inventare citazioni.
+""".strip()
+
+
+def _doctor_rules_for_mode(mode: str) -> str:
+    return _DOCTOR_EVIDENCE_RULES if normalize_mode(mode) == "doctor" else ""
+
 
 def direct_system_prompt(*, mode: str) -> str:
     style = _style_for_mode(mode)
@@ -74,6 +87,7 @@ def direct_system_prompt(*, mode: str) -> str:
         - Se la domanda e' medica, sii cauto: non fare diagnosi o terapie personalizzate.
         - Se mancano informazioni, fai domande di chiarimento.
         {_CONVERSATIONAL_RULES}
+        {_doctor_rules_for_mode(mode)}
         {style}
         """
     ).strip()
@@ -97,6 +111,7 @@ def pubmed_system_prompt(*, mode: str, disclaimer: str) -> str:
         - Cita un PMID solo se quello studio supporta direttamente l'asserzione specifica; altrimenti dichiara che le fonti non lo coprono.
         - Alla fine aggiungi questa nota: {disclaimer}
         {_CONVERSATIONAL_RULES}
+        {_doctor_rules_for_mode(mode)}
         {style}
         """
     ).strip()
@@ -121,6 +136,7 @@ def pubmed_external_system_prompt(*, mode: str, disclaimer: str) -> str:
         - Cita un riferimento solo se supporta direttamente l'asserzione specifica; altrimenti dichiara che le fonti non lo coprono.
         - Alla fine aggiungi questa nota: {disclaimer}
         {_CONVERSATIONAL_RULES}
+        {_doctor_rules_for_mode(mode)}
         {style}
         """
     ).strip()
@@ -143,6 +159,7 @@ def revise_system_prompt(*, mode: str, disclaimer: str, min_n: int, allowed_pmid
         - Cita un PMID solo se quello studio supporta direttamente l'asserzione specifica; altrimenti dichiara che le fonti non lo coprono.
         - Alla fine aggiungi questa nota: {disclaimer}
         {_CONVERSATIONAL_RULES}
+        {_doctor_rules_for_mode(mode)}
         {style}
         """
     ).strip()
