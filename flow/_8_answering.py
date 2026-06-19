@@ -206,6 +206,7 @@ def revise_to_meet_min_citations(
     )
     return Answer(text=(text or "").strip())
 
+
 def answer_clarification(
     oai: OpenAIClient,
     *,
@@ -219,12 +220,12 @@ def answer_clarification(
         task = (
             "La pipeline non ha trovato fonti scientifiche sufficienti o citazioni affidabili. "
             "Non rispondere nel merito clinico. Spiega in modo breve che servono più dettagli "
-            "per cercare meglio nelle fonti, e fai 3-4 controdomande utili. "
+            "per cercare meglio nelle fonti, e fai 3-4 controdomande utili."
         )
     else:
         task = (
             "La domanda è troppo generica per formulare una ricerca scientifica affidabile. "
-            "Non rispondere nel merito clinico. Fai 3-4 controdomande utili per chiarire il sintomo. "
+            "Non rispondere nel merito clinico. Fai 3-4 controdomande utili per chiarire il sintomo."
         )
 
     text = oai.chat(
@@ -284,6 +285,43 @@ def answer_with_gyn_area_offer(
             {
                 "role": "user",
                 "content": f"Modalità utente: {mode}\n\nRisposta da rendere più naturale:\n{current_answer}",
+            },
+        ],
+    )
+    return Answer(text=(text or "").strip())
+
+
+def answer_gyn_suggestions_result(
+    oai: OpenAIClient,
+    *,
+    model: str,
+    area: str,
+    count: int,
+    mode: str,
+) -> Answer:
+    text = oai.chat(
+        model=model,
+        temperature=0.3,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Sei Chatbot Gin. Rispondi in italiano con tono naturale, sintetico e umano. "
+                    "Non fare diagnosi o terapia. "
+                    "Devi introdurre il risultato della ricerca di ginecologhe per l'area indicata dall'utente. "
+                    "Non chiedere indirizzo, residenza, posizione geografica o dove vive. "
+                    "Usa sempre il femminile: ginecologa, ginecologhe, specialista, professionista. "
+                    "Non usare mai ginecologo, dottore o medico per riferirti alla professionista."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Modalità utente: {mode}\n"
+                    f"Area indicata: {area}\n"
+                    f"Numero di risultati trovati: {count}\n\n"
+                    "Scrivi una breve frase introduttiva. Se non ci sono risultati, dillo in modo gentile e suggerisci di provare con una zona più ampia."
+                ),
             },
         ],
     )
