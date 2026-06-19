@@ -27,7 +27,7 @@ from .flow._8_answering import (
     extract_cited_doc_ids,
     revise_to_meet_min_citations,
 )
-from .flow._4_router import allow_direct_without_sources, contextualize_question, decide_route
+from .flow._4_router import contextualize_question, decide_route
 from .flow._9_external_rag import connect_external, retrieve_top_n
 from .flow._13_external_chroma import connect_chroma, retrieve_top_n_chroma
 from .flow._14_debug import dbg
@@ -272,12 +272,19 @@ def chat(req: ChatRequest) -> ChatResponse:
         )
         print(f"[CONTEXT] original={req.message!r} retrieval_question={retrieval_question!r}", flush=True)
         
-        # Router (safe-by-default): only allow direct for clearly non-medical/meta queries.
+        # Router: GPT decides whether this needs fresh scientific retrieval or a direct conversational answer.
         try:
             decision = decide_route(oai, model=settings.openai_chat_model, question=retrieval_question)
-        except Exception:
+        except Exception as e:
+            print(f"[ROUTER] error={type(e).__name__}: {str(e)}", flush=True)
             decision = None
-        use_direct = bool(decision and decision.route == "direct" and allow_direct_without_sources(req.message))
+        use_direct = bool(decision and decision.route == "direct")
+        print(
+            f"[ROUTER] route={decision.route if decision else 'none'} "
+            f"term={(decision.term if decision else None)!r} "
+            f"use_direct={use_direct}",
+            flush=True,
+        )
         if use_direct:
             run = db.create_retrieval_run(conn, query="direct", found_count=0, pmids=[])
             ans = answer_direct(oai, model=settings.openai_chat_model, question=req.message, mode=req.mode, history=history)
