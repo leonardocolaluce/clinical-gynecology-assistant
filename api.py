@@ -32,6 +32,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
     mode: str = Field(default="patient", description="patient|doctor|menopause")
     session_id: Optional[str] = None
+    area_of_interest: Optional[str] = None
     city: Optional[str] = None
     address_hint: Optional[str] = None
     latitude: Optional[float] = None
@@ -128,6 +129,30 @@ def chat(req: ChatRequest) -> ChatResponse:
         )
     message_id = db.create_message(conn, mode=req.mode, question=req.message, session_id=session_id)
 
+    if not _is_doctor_mode(req.mode) and _asked_for_gyn_area(history):
+        area = (req.area_of_interest or req.message or "").strip()
+        suggestions = build_gyn_suggestions(ChatRequest(message=req.message, mode=req.mode, session_id=session_id, city=area))
+        run = db.create_retrieval_run(conn, query="gyn_suggestions", found_count=0, pmids=[])
+        answer_text = "Ho cercato alcune ginecologhe nell'area indicata."
+        db.finalize_message_ok(conn, message_id=message_id, answer=answer_text, retrieval_run_id=run.id, cited_pmids=[])
+        return ChatResponse(
+            answer=answer_text,
+            retrieval=RetrievalInfo(query="gyn_suggestions", found=0, pmids=[], cached=0, fetched=0),
+            citations=[],
+            suggestions=suggestions,
+        )
+
+    if _needs_clarification(req.message):
+        run = db.create_retrieval_run(conn, query="clarification", found_count=0, pmids=[])
+        answer_text = _clarification_answer()
+        db.finalize_message_ok(conn, message_id=message_id, answer=answer_text, retrieval_run_id=run.id, cited_pmids=[])
+        return ChatResponse(
+            answer=answer_text,
+            retrieval=RetrievalInfo(query="clarification", found=0, pmids=[], cached=0, fetched=0),
+            citations=[],
+            suggestions=[],
+        )
+
     try:
         dbg(f"/chat mode={req.mode!r} msg_len={len((req.message or '').strip())}")
         if settings.external_rag_db_path:
@@ -140,6 +165,8 @@ def chat(req: ChatRequest) -> ChatResponse:
             email=settings.ncbi_email,
             timeout_s=settings.pubmed_timeout_s,
         )
+
+        
 
         # Router (safe-by-default): only allow direct for clearly non-medical/meta queries.
         retrieval_question = contextualize_question(
@@ -304,6 +331,11 @@ def chat(req: ChatRequest) -> ChatResponse:
         citations = _build_citations(conn, cited_pmids)
         citations.extend(_build_external_citations(external_docs, cited_doc_ids))
 
+        if not citations:
+            answer_text = _no_sources_clarification_answer()
+            cited_pmids = []
+            cited_doc_ids = []
+
         db.finalize_message_ok(conn, message_id=message_id, answer=answer_text, retrieval_run_id=run.id, cited_pmids=cited_pmids)
 
         print(
@@ -312,6 +344,9 @@ def chat(req: ChatRequest) -> ChatResponse:
         )
 
         suggestions = build_gyn_suggestions(req)
+
+        if not suggestions and _should_offer_gyn(req, history, answer_text, citations):
+            answer_text = answer_text.rstrip() + "\n\n" + GYN_AREA_PROMPT
 
         return ChatResponse(
             answer=answer_text,
@@ -361,6 +396,85 @@ def build_gyn_suggestions(req: ChatRequest) -> list[GynSuggestionOut]:
         )
         for s in raw_suggestions
     ]
+
+_GENERIC_SYMPTOMS = {
+    "mal di pancia",
+    "male alla pancia",
+    "dolore pancia",
+    "dolore addome",
+    "dolore basso ventre",
+    "bruciore",
+    "perdite",
+    "prurito",
+    "sanguinamento",
+    "ritardo",
+    "nausea",
+}
+
+def _needs_clarification(text: str) -> bool:
+    q = (text or "").strip().lower()
+    words = [w for w in q.replace("?", " ").split() if w]
+    if len(words) <= 5 and any(symptom in q for symptom in _GENERIC_SYMPTOMS):
+        return True
+    return False
+
+def _clarification_answer() -> str:
+    return (
+        "Per risponderti in modo utile ho bisogno di qualche dettaglio in più, perché la domanda è molto generica.\n\n"
+        "Puoi dirmi, senza inserire dati personali:\n"
+        "- da quanto tempo è presente il sintomo?\n"
+        "- dove lo senti in modo più preciso?\n"
+        "- è continuo o va e viene?\n"
+        "- ci sono altri sintomi associati, come febbre, perdite, bruciore, sanguinamento o nausea?\n"
+        "- è collegato al ciclo mestruale, alla menopausa, a rapporti sessuali o a una terapia in corso?\n\n"
+        "Con queste informazioni posso formulare una ricerca più precisa nelle fonti scientifiche disponibili."
+    )
+
+def _no_sources_clarification_answer() -> str:
+    return (
+        "Per questa domanda non ho trovato fonti scientifiche sufficienti a cui attingere per una risposta affidabile.\n\n"
+        "Per provare a cercare meglio, puoi riformulare aggiungendo qualche dettaglio non personale, ad esempio:\n"
+        "- sintomo principale;\n"
+        "- durata del sintomo;\n"
+        "- localizzazione più precisa;\n"
+        "- eventuali sintomi associati;\n"
+        "- contesto, ad esempio ciclo mestruale, menopausa, gravidanza, terapia in corso o rapporti sessuali.\n\n"
+        "Se il sintomo è intenso, improvviso, persistente o associato a febbre, sanguinamento importante o peggioramento rapido, ti suggerisco di rivolgerti a una ginecologa."
+    )
+
+GYN_AREA_PROMPT = (
+    "Se mi indichi un'area di interesse, ad esempio città o zona, "
+    "posso provare a suggerirti alcune ginecologhe in quell'area."
+)
+
+def _is_doctor_mode(mode: str) -> bool:
+    return (mode or "").strip().lower() in {"doctor", "medico", "ginecologo", "ginecologa"}
+
+def _asked_for_gyn_area(history: list[dict[str, str]]) -> bool:
+    return any("area di interesse" in (h.get("answer") or "").lower() for h in history[-3:])
+
+def _already_offered_gyn(history: list[dict[str, str]]) -> bool:
+    return any("posso provare a suggerirti" in (h.get("answer") or "").lower() for h in history)
+
+def _explicit_gyn_request(text: str) -> bool:
+    q = (text or "").lower()
+    return any(x in q for x in ["consigli una ginecologa", "trova una ginecologa", "ginecologa vicino", "specialista vicino", "da chi posso andare"])
+
+def _clinical_turns(history: list[dict[str, str]]) -> int:
+    return sum(1 for h in history if (h.get("question") or "").strip())
+
+def _should_offer_gyn(req: ChatRequest, history: list[dict[str, str]], answer_text: str, citations: list[Citation]) -> bool:
+    if _is_doctor_mode(req.mode) or _already_offered_gyn(history):
+        return False
+    if _explicit_gyn_request(req.message):
+        return True
+    if "rivolg" in answer_text.lower() and "ginecolog" in answer_text.lower():
+        return True
+    if _clinical_turns(history) >= 3:
+        return True
+    if not citations:
+        return True
+    return False
 
 def _build_citations(conn: Any, pmids: list[str]) -> list[Citation]:
     out: list[Citation] = []
