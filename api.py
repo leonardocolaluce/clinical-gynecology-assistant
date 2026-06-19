@@ -294,6 +294,12 @@ def chat(req: ChatRequest) -> ChatResponse:
                 suggestions=suggestions,
             )
 
+        doctor_mode = _is_doctor_mode(req.mode)
+        pubmed_retmax = max(int(settings.pubmed_retmax), 25) if doctor_mode else int(settings.pubmed_retmax)
+        pubmed_top_k = max(int(settings.top_k), 20) if doctor_mode else int(settings.top_k)
+        external_candidates = max(int(settings.external_candidates), 20) if doctor_mode else int(settings.external_candidates)
+        final_external_k = max(int(settings.final_external_k), 20) if doctor_mode else int(settings.final_external_k)
+
         pmids: list[str] = []
         query_used: str = ""
         terms = []
@@ -304,11 +310,11 @@ def chat(req: ChatRequest) -> ChatResponse:
 
         for term in terms:
             query_used = term
-            pmids = pubmed.esearch(term, retmax=settings.pubmed_retmax)
-            if len(pmids) >= settings.pubmed_retmax:
+            pmids = pubmed.esearch(term, retmax=pubmed_retmax)
+            if len(pmids) >= pubmed_retmax:
                 break
 
-        pmids = pmids[: settings.pubmed_retmax]
+        pmids = pmids[:pubmed_retmax]
         cached = db.get_cached_papers(conn, pmids)
         missing = [p for p in pmids if p not in cached]
         fetched = 0
@@ -326,19 +332,19 @@ def chat(req: ChatRequest) -> ChatResponse:
         run = db.create_retrieval_run(conn, query=query_used, found_count=len(pmids), pmids=pmids)
 
         # Optional reranking: keep only top-k most relevant abstracts before answering.
-        if papers and int(settings.top_k) > 0 and int(settings.top_k) < len(papers):
+        if papers and pubmed_top_k > 0 and pubmed_top_k < len(papers):
             reranked = select_top_k(
                 oai,
                 embed_model=settings.openai_embed_model,
                 question=retrieval_question,
                 papers=papers,
-                top_k=int(settings.top_k),
+                top_k=pubmed_top_k,
             )
             papers = reranked.papers
 
         external_docs = []
         print("[EUROPEPMC] external block reached", flush=True)
-        if settings.external_rag_db_path and int(settings.external_candidates) > 0 and int(settings.final_external_k) > 0:
+        if settings.external_rag_db_path and external_candidates > 0 and final_external_k > 0:
             if settings.external_rag_db_path.strip().lower().startswith("http"):
                 raise RuntimeError("EXTERNAL_RAG_DB_PATH is a URL. Provide a local path (Drive-synced folder/file) instead.")
             p = Path(settings.external_rag_db_path)
@@ -356,9 +362,9 @@ def chat(req: ChatRequest) -> ChatResponse:
                         oai=oai,
                         embed_model=settings.openai_embed_model,
                         question=retrieval_question,
-                        top_n=int(settings.external_candidates),
+                        top_n=external_candidates,
                     )
-                    external_docs = docs[: max(0, int(settings.final_external_k))]
+                    external_docs = docs[: max(0, final_external_k)]
                     print(f"[EUROPEPMC] Chroma retrieval done candidates={len(docs)} final={len(external_docs)}", flush=True)
                     dbg(f"External(Chroma) docs={len(docs)} final={len(external_docs)}")
                 except Exception as e:
@@ -370,8 +376,8 @@ def chat(req: ChatRequest) -> ChatResponse:
                 ext_conn = connect_external(settings.external_rag_db_path)
                 try:
                     q_vec = oai.embed(model=settings.openai_embed_model, text=req.message)
-                    hits = retrieve_top_n(ext_conn, query_vec=q_vec, top_n=int(settings.external_candidates))
-                    external_docs = [h.doc for h in hits[: max(0, int(settings.final_external_k))]]
+                    hits = retrieve_top_n(ext_conn, query_vec=q_vec, top_n=external_candidates)
+                    external_docs = [h.doc for h in hits[: max(0, final_external_k)]]
                     dbg(f"External(SQLite) hits={len(hits)} final={len(external_docs)}")
                 finally:
                     ext_conn.close()
