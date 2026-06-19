@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import random
+
 from .flow._10_prompts import load_prompt_styles, save_prompt_styles
 from .flow._12_gyn_suggest import suggest_top3
 from typing import Any, Optional
@@ -76,12 +78,48 @@ class ChatResponse(BaseModel):
     citations: list[Citation]
     suggestions: list[GynSuggestionOut] = []
 
+class StatusMessageResponse(BaseModel):
+    message: str
+
 class PromptConfig(BaseModel):
     patient: str
     menopause: str
     doctor: str
 
 app = FastAPI(title="Pipeline M1 - Chatbot Gin", version="0.1")
+
+STATUS_MESSAGES = [
+    "Sto analizzando la domanda.",
+    "Sto ricostruendo il contesto della conversazione.",
+    "Sto preparando una ricerca più precisa.",
+    "Sto consultando le fonti scientifiche disponibili.",
+    "Sto interrogando PubMed.",
+    "Sto verificando gli abstract più pertinenti.",
+    "Sto confrontando le informazioni recuperate.",
+    "Sto controllando che la risposta sia supportata dalle fonti.",
+    "Sto selezionando i riferimenti più utili.",
+    "Sto verificando le citazioni scientifiche.",
+    "Sto consultando anche il database Europe PMC.",
+    "Sto cercando documenti pertinenti nel database scientifico.",
+    "Sto filtrando le informazioni meno rilevanti.",
+    "Sto organizzando la risposta in modo chiaro.",
+    "Sto controllando che non manchino passaggi importanti.",
+    "Sto preparando una risposta sintetica e utile.",
+    "Sto evitando conclusioni non supportate dalle fonti.",
+    "Sto verificando se servono ulteriori dettagli.",
+    "Sto controllando se la domanda richiede una risposta più specifica.",
+    "Sto cercando di formulare una risposta prudente.",
+    "Sto confrontando PubMed e il database scientifico interno.",
+    "Sto controllando la coerenza tra fonti e risposta.",
+    "Sto raccogliendo gli elementi più affidabili.",
+    "Sto preparando una risposta con citazioni quando disponibili.",
+    "Ancora qualche istante, sto verificando le fonti.",
+    "Ancora qualche istante, sto completando il controllo.",
+    "Sto finalizzando la risposta.",
+    "Sto facendo l'ultima verifica sulle informazioni.",
+    "Sto preparando il testo finale.",
+    "Quasi pronto, sto ordinando le informazioni principali.",
+]
 
 
 @app.on_event("startup")
@@ -94,6 +132,10 @@ def _startup() -> None:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+@app.get("/chat/status-message", response_model=StatusMessageResponse)
+def chat_status_message() -> StatusMessageResponse:
+    return StatusMessageResponse(message=random.choice(STATUS_MESSAGES))
 
 
 @app.get("/admin/prompts", response_model=PromptConfig)
@@ -135,12 +177,42 @@ def chat(req: ChatRequest) -> ChatResponse:
 
     if not _is_doctor_mode(req.mode) and _asked_for_gyn_area(history):
         area = (req.area_of_interest or req.message or "").strip()
-        suggestions = build_gyn_suggestions(ChatRequest(message=req.message, mode=req.mode, session_id=session_id, city=area))
+        suggestions = build_gyn_suggestions(
+            ChatRequest(message=req.message, mode=req.mode, session_id=session_id, city=area, address_hint=area)
+        )
         run = db.create_retrieval_run(conn, query="gyn_suggestions", found_count=0, pmids=[])
         ans = answer_gyn_suggestions_result(
             oai,
             model=settings.openai_chat_model,
             area=area,
+            count=len(suggestions),
+            mode=req.mode,
+        )
+        answer_text = (ans.text or "").strip()
+        db.finalize_message_ok(conn, message_id=message_id, answer=answer_text, retrieval_run_id=run.id, cited_pmids=[])
+        return ChatResponse(
+            answer=answer_text,
+            retrieval=RetrievalInfo(query="gyn_suggestions", found=0, pmids=[], cached=0, fetched=0),
+            citations=[],
+            suggestions=suggestions,
+        )
+
+    explicit_area = None if _is_doctor_mode(req.mode) else _extract_area_from_gyn_request(req.message)
+    if explicit_area:
+        suggestions = build_gyn_suggestions(
+            ChatRequest(
+                message=req.message,
+                mode=req.mode,
+                session_id=session_id,
+                city=explicit_area,
+                address_hint=explicit_area,
+            )
+        )
+        run = db.create_retrieval_run(conn, query="gyn_suggestions", found_count=0, pmids=[])
+        ans = answer_gyn_suggestions_result(
+            oai,
+            model=settings.openai_chat_model,
+            area=explicit_area,
             count=len(suggestions),
             mode=req.mode,
         )
@@ -454,14 +526,57 @@ def _is_doctor_mode(mode: str) -> bool:
     return (mode or "").strip().lower() in {"doctor", "medico", "ginecologo", "ginecologa"}
 
 def _asked_for_gyn_area(history: list[dict[str, str]]) -> bool:
-    return any("area di interesse" in (h.get("answer") or "").lower() for h in history[-3:])
+    prompts = (
+        "area di interesse",
+        "città o zona",
+        "zona",
+        "area",
+        "in quell'area",
+        "in quella zona",
+        "indicami",
+        "mi indichi",
+        "puoi indicarmi",
+        "posso provare a suggerire alcune ginecologhe",
+        "posso suggerirti alcune ginecologhe",
+    )
+    return any(
+        any(prompt in (h.get("answer") or "").lower() for prompt in prompts)
+        for h in history[-3:]
+    )
 
 def _already_offered_gyn(history: list[dict[str, str]]) -> bool:
     return any("posso provare a suggerirti" in (h.get("answer") or "").lower() for h in history)
 
 def _explicit_gyn_request(text: str) -> bool:
     q = (text or "").lower()
-    return any(x in q for x in ["consigli una ginecologa", "trova una ginecologa", "ginecologa vicino", "specialista vicino", "da chi posso andare"])
+    return any(
+        x in q
+        for x in [
+            "consigli una ginecologa",
+            "consigliami una ginecologa",
+            "trova una ginecologa",
+            "trovami una ginecologa",
+            "trovami medici",
+            "trova medici",
+            "cerca medici",
+            "ginecologa vicino",
+            "specialista vicino",
+            "da chi posso andare",
+        ]
+    )
+
+def _extract_area_from_gyn_request(text: str) -> str | None:
+    q = (text or "").strip().lower()
+    if not q:
+        return None
+    request_terms = ("ginecolog", "medic", "dottor", "specialist", "trovami", "trova", "cerca", "consigli")
+    if not any(term in q for term in request_terms):
+        return None
+    for marker in (" vicino a ", " vicino ", " in zona ", " zona ", " a ", " in ", " su "):
+        if marker in q:
+            area = q.split(marker, 1)[1].strip(" .?!,;:")
+            return area or None
+    return None
 
 def _clinical_turns(history: list[dict[str, str]]) -> int:
     return sum(1 for h in history if (h.get("question") or "").strip())
