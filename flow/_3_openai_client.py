@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import urllib.request
 import urllib.error
 import time
@@ -14,9 +15,13 @@ class OpenAIClient:
     timeout_s: int = 90
     max_retries: int = 3
 
-    def chat(self, *, model: str, messages: list[dict], temperature: float = 0.2) -> str:
+    def chat(self, *, model: str, messages: list[dict], temperature: float = 0.2, max_tokens: int | None = None) -> str:
         url = self.base_url.rstrip("/") + "/chat/completions"
-        body = json.dumps({"model": model, "temperature": temperature, "messages": messages}).encode("utf-8")
+        token_limit = _resolve_max_tokens(max_tokens)
+        payload = {"model": model, "temperature": temperature, "messages": messages}
+        if token_limit is not None:
+            payload["max_tokens"] = token_limit
+        body = json.dumps(payload).encode("utf-8")
         return _post_json_with_retries(
             url,
             body=body,
@@ -36,6 +41,17 @@ class OpenAIClient:
             max_retries=self.max_retries,
         )
         return list(map(float, data["data"][0]["embedding"]))
+
+
+def _resolve_max_tokens(max_tokens: int | None) -> int | None:
+    raw = max_tokens if max_tokens is not None else os.getenv("OPENAI_MAX_TOKENS", "900")
+    try:
+        value = int(raw)
+    except Exception:
+        value = 900
+    if value <= 0:
+        return None
+    return value
 
 
 def _post_json_with_retries(
