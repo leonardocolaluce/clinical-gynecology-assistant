@@ -15,7 +15,10 @@ from .flow._5_pubmed_client import PubMedClient
 from .flow._6_query_builder import build_pubmed_term_candidates
 from .flow._7_retrieval import select_top_k
 from .flow._8_answering import (
+    answer_clarification,
     answer_direct,
+    answer_gyn_suggestions_result,
+    answer_with_gyn_area_offer,
     answer_with_pubmed,
     answer_with_pubmed_and_external,
     extract_cited_pmids,
@@ -128,12 +131,20 @@ def chat(req: ChatRequest) -> ChatResponse:
             flush=True,
         )
     message_id = db.create_message(conn, mode=req.mode, question=req.message, session_id=session_id)
+    oai = OpenAIClient(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
 
     if not _is_doctor_mode(req.mode) and _asked_for_gyn_area(history):
         area = (req.area_of_interest or req.message or "").strip()
         suggestions = build_gyn_suggestions(ChatRequest(message=req.message, mode=req.mode, session_id=session_id, city=area))
         run = db.create_retrieval_run(conn, query="gyn_suggestions", found_count=0, pmids=[])
-        answer_text = "Ho cercato alcune ginecologhe nell'area indicata."
+        ans = answer_gyn_suggestions_result(
+            oai,
+            model=settings.openai_chat_model,
+            area=area,
+            count=len(suggestions),
+            mode=req.mode,
+        )
+        answer_text = (ans.text or "").strip()
         db.finalize_message_ok(conn, message_id=message_id, answer=answer_text, retrieval_run_id=run.id, cited_pmids=[])
         return ChatResponse(
             answer=answer_text,
@@ -144,7 +155,15 @@ def chat(req: ChatRequest) -> ChatResponse:
 
     if _needs_clarification(req.message):
         run = db.create_retrieval_run(conn, query="clarification", found_count=0, pmids=[])
-        answer_text = _clarification_answer()
+        ans = answer_clarification(
+            oai,
+            model=settings.openai_chat_model,
+            question=req.message,
+            mode=req.mode,
+            reason="generic_question",
+            history=history,
+        )
+        answer_text = (ans.text or "").strip()
         db.finalize_message_ok(conn, message_id=message_id, answer=answer_text, retrieval_run_id=run.id, cited_pmids=[])
         return ChatResponse(
             answer=answer_text,
@@ -158,7 +177,6 @@ def chat(req: ChatRequest) -> ChatResponse:
         if settings.external_rag_db_path:
             p = Path(settings.external_rag_db_path)
             dbg(f"EXTERNAL_RAG_DB_PATH={settings.external_rag_db_path!r} exists={p.exists()} is_dir={p.is_dir()} is_file={p.is_file()}")
-        oai = OpenAIClient(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
         pubmed = PubMedClient(
             api_key=settings.ncbi_api_key,
             tool=settings.ncbi_tool,
@@ -332,7 +350,15 @@ def chat(req: ChatRequest) -> ChatResponse:
         citations.extend(_build_external_citations(external_docs, cited_doc_ids))
 
         if not citations:
-            answer_text = _no_sources_clarification_answer()
+            ans = answer_clarification(
+                oai,
+                model=settings.openai_chat_model,
+                question=req.message,
+                mode=req.mode,
+                reason="no_sources",
+                history=history,
+            )
+            answer_text = (ans.text or "").strip()
             cited_pmids = []
             cited_doc_ids = []
 
@@ -346,7 +372,13 @@ def chat(req: ChatRequest) -> ChatResponse:
         suggestions = build_gyn_suggestions(req)
 
         if not suggestions and _should_offer_gyn(req, history, answer_text, citations):
-            answer_text = answer_text.rstrip() + "\n\n" + GYN_AREA_PROMPT
+            ans = answer_with_gyn_area_offer(
+                oai,
+                model=settings.openai_chat_model,
+                current_answer=answer_text,
+                mode=req.mode,
+            )
+            answer_text = (ans.text or "").strip()
 
         return ChatResponse(
             answer=answer_text,
@@ -417,35 +449,6 @@ def _needs_clarification(text: str) -> bool:
     if len(words) <= 5 and any(symptom in q for symptom in _GENERIC_SYMPTOMS):
         return True
     return False
-
-def _clarification_answer() -> str:
-    return (
-        "Per risponderti in modo utile ho bisogno di qualche dettaglio in più, perché la domanda è molto generica.\n\n"
-        "Puoi dirmi, senza inserire dati personali:\n"
-        "- da quanto tempo è presente il sintomo?\n"
-        "- dove lo senti in modo più preciso?\n"
-        "- è continuo o va e viene?\n"
-        "- ci sono altri sintomi associati, come febbre, perdite, bruciore, sanguinamento o nausea?\n"
-        "- è collegato al ciclo mestruale, alla menopausa, a rapporti sessuali o a una terapia in corso?\n\n"
-        "Con queste informazioni posso formulare una ricerca più precisa nelle fonti scientifiche disponibili."
-    )
-
-def _no_sources_clarification_answer() -> str:
-    return (
-        "Per questa domanda non ho trovato fonti scientifiche sufficienti a cui attingere per una risposta affidabile.\n\n"
-        "Per provare a cercare meglio, puoi riformulare aggiungendo qualche dettaglio non personale, ad esempio:\n"
-        "- sintomo principale;\n"
-        "- durata del sintomo;\n"
-        "- localizzazione più precisa;\n"
-        "- eventuali sintomi associati;\n"
-        "- contesto, ad esempio ciclo mestruale, menopausa, gravidanza, terapia in corso o rapporti sessuali.\n\n"
-        "Se il sintomo è intenso, improvviso, persistente o associato a febbre, sanguinamento importante o peggioramento rapido, ti suggerisco di rivolgerti a una ginecologa."
-    )
-
-GYN_AREA_PROMPT = (
-    "Se mi indichi un'area di interesse, ad esempio città o zona, "
-    "posso provare a suggerirti alcune ginecologhe in quell'area."
-)
 
 def _is_doctor_mode(mode: str) -> bool:
     return (mode or "").strip().lower() in {"doctor", "medico", "ginecologo", "ginecologa"}
