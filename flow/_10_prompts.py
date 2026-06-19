@@ -64,9 +64,10 @@ _CONVERSATIONAL_RULES = """
 
 _DOCTOR_EVIDENCE_RULES = """
 - Per il profilo doctor, rispondi con maggiore dettaglio tecnico e clinico.
-- Per ogni fonte rilevante che citi, riassumi brevemente cosa aggiunge alla risposta.
-- Spiega perché hai scelto le fonti principali e quanto sono pertinenti alla domanda.
-- Quando citi più fonti, confrontale tra loro: indica punti concordanti, differenze, limiti e incertezze.
+- Non spiegare concetti di base con taglio divulgativo salvo richiesta esplicita: usa un taglio clinico-specialistico.
+- Devi sempre spiegare perché hai scelto le fonti principali e quanto sono pertinenti alla domanda.
+- Devi sempre riassumere brevemente cosa aggiunge ciascuna fonte rilevante citata.
+- Devi sempre confrontare le fonti tra loro: indica punti concordanti, differenze, limiti e incertezze.
 - Se le fonti disponibili sono eterogenee o deboli, dichiaralo esplicitamente.
 - Usa più riferimenti distinti quando sono disponibili e pertinenti, senza inventare citazioni.
 """.strip()
@@ -74,6 +75,15 @@ _DOCTOR_EVIDENCE_RULES = """
 
 def _doctor_rules_for_mode(mode: str) -> str:
     return _DOCTOR_EVIDENCE_RULES if normalize_mode(mode) == "doctor" else ""
+
+
+def _disclaimer_for_mode(mode: str, disclaimer: str) -> str:
+    if normalize_mode(mode) == "doctor":
+        return (
+            "Nota: sintesi informativa basata sulle fonti fornite; non sostituisce linee guida locali, "
+            "valutazione clinica, anamnesi, esame obiettivo e giudizio professionale."
+        )
+    return disclaimer
 
 
 def direct_system_prompt(*, mode: str) -> str:
@@ -87,7 +97,6 @@ def direct_system_prompt(*, mode: str) -> str:
         - Se la domanda e' medica, sii cauto: non fare diagnosi o terapie personalizzate.
         - Se mancano informazioni, fai domande di chiarimento.
         {_CONVERSATIONAL_RULES}
-        {_doctor_rules_for_mode(mode)}
         {style}
         """
     ).strip()
@@ -95,6 +104,7 @@ def direct_system_prompt(*, mode: str) -> str:
 
 def pubmed_system_prompt(*, mode: str, disclaimer: str) -> str:
     style = _style_for_mode(mode)
+    final_disclaimer = _disclaimer_for_mode(mode, disclaimer)
 
     return textwrap.dedent(
         f"""
@@ -109,7 +119,7 @@ def pubmed_system_prompt(*, mode: str, disclaimer: str) -> str:
         - Se possibile, cita almeno 2 PMID distinti. Se le fonti non supportano 2 PMID distinti, spiega il limite e cita solo ciò che e' supportato.
         - Vietate formulazioni speculative (es. "potrebbe", "forse", "probabilmente") se non supportate da una citazione [PMID:xxxxxx] nella stessa frase.
         - Cita un PMID solo se quello studio supporta direttamente l'asserzione specifica; altrimenti dichiara che le fonti non lo coprono.
-        - Alla fine aggiungi questa nota: {disclaimer}
+        - Alla fine aggiungi questa nota: {final_disclaimer}
         {_CONVERSATIONAL_RULES}
         {_doctor_rules_for_mode(mode)}
         {style}
@@ -119,6 +129,7 @@ def pubmed_system_prompt(*, mode: str, disclaimer: str) -> str:
 
 def pubmed_external_system_prompt(*, mode: str, disclaimer: str) -> str:
     style = _style_for_mode(mode)
+    final_disclaimer = _disclaimer_for_mode(mode, disclaimer)
 
     return textwrap.dedent(
         f"""
@@ -134,7 +145,7 @@ def pubmed_external_system_prompt(*, mode: str, disclaimer: str) -> str:
         - Se possibile, cita almeno 2 riferimenti distinti. Se le fonti non lo supportano, spiega il limite.
         - Vietate formulazioni speculative (es. "potrebbe", "forse", "probabilmente") se non supportate da una citazione nella stessa frase.
         - Cita un riferimento solo se supporta direttamente l'asserzione specifica; altrimenti dichiara che le fonti non lo coprono.
-        - Alla fine aggiungi questa nota: {disclaimer}
+        - Alla fine aggiungi questa nota: {final_disclaimer}
         {_CONVERSATIONAL_RULES}
         {_doctor_rules_for_mode(mode)}
         {style}
@@ -144,6 +155,7 @@ def pubmed_external_system_prompt(*, mode: str, disclaimer: str) -> str:
 
 def revise_system_prompt(*, mode: str, disclaimer: str, min_n: int, allowed_pmids_str: str) -> str:
     style = _style_for_mode(mode)
+    final_disclaimer = _disclaimer_for_mode(mode, disclaimer)
 
     return textwrap.dedent(
         f"""
@@ -157,7 +169,7 @@ def revise_system_prompt(*, mode: str, disclaimer: str, min_n: int, allowed_pmid
         - Puoi citare SOLO questi PMID: {allowed_pmids_str}
         - Vietate formulazioni speculative (es. "potrebbe", "forse", "probabilmente") se non supportate da una citazione [PMID:xxxxxx] nella stessa frase.
         - Cita un PMID solo se quello studio supporta direttamente l'asserzione specifica; altrimenti dichiara che le fonti non lo coprono.
-        - Alla fine aggiungi questa nota: {disclaimer}
+        - Alla fine aggiungi questa nota: {final_disclaimer}
         {_CONVERSATIONAL_RULES}
         {_doctor_rules_for_mode(mode)}
         {style}
