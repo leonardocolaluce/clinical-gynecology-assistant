@@ -70,6 +70,7 @@ _DOCTOR_EVIDENCE_RULES = """
   Perché queste fonti
   Confronto tra fonti
   Limiti e incertezze
+- La risposta deve essere estesa e approfondita: almeno 6-8 paragrafi sostanziali quando le fonti disponibili lo consentono.
 - In "Perché queste fonti", spiega perché le fonti citate sono pertinenti alla domanda.
 - In "Confronto tra fonti", confronta concordanze, differenze, popolazione/studio/contesto e limiti principali.
 - Non limitarti a elencare risultati: collega ogni conclusione alla qualità e pertinenza delle fonti.
