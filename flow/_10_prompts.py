@@ -147,7 +147,7 @@ def pubmed_external_system_prompt(*, mode: str, disclaimer: str) -> str:
         - Se le fonti non bastano per rispondere, dillo esplicitamente e non inventare.
         - Ogni affermazione fattuale o raccomandazione deve avere una citazione in-line leggibile.
           * Per PubMed usa SOLO il link PubMed visibile nel formato (https://pubmed.ncbi.nlm.nih.gov/xxxxxx/). Non scrivere [PMID:xxxxxx].
-          * Per il dataset usa SOLO il link della fonte se presente. Non scrivere [DOC:ID] nel testo visibile.
+          * Per il dataset usa il formato (Europe PMC: titolo esatto della fonte). Non scrivere [DOC:ID].
         - Se sintetizzi più studi/documenti in una frase, cita più link nella stessa frase.
         - Se possibile, cita almeno 2 riferimenti distinti. Se le fonti non lo supportano, spiega il limite.
         - Vietate formulazioni speculative (es. "potrebbe", "forse", "probabilmente") se non supportate da una citazione nella stessa frase.
