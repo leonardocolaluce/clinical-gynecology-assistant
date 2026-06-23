@@ -124,8 +124,8 @@ def pubmed_system_prompt(*, mode: str, disclaimer: str) -> str:
         - Non scrivere mai codici visibili come [PMID:xxxxxx] nel testo della risposta.
         - Se sintetizzi più studi in una frase, cita più link PubMed nella stessa frase.
         - Vietate formulazioni speculative se non supportate da un link PubMed nella stessa frase.
-        - Se possibile, cita almeno 2 PMID distinti. Se le fonti non supportano 2 PMID distinti, spiega il limite e cita solo ciò che e' supportato.
-        - Cita un PMID solo se quello studio supporta direttamente l'asserzione specifica; altrimenti dichiara che le fonti non lo coprono.
+        - Se possibile, cita almeno 2 link PubMed distinti. Se le fonti non supportano 2 fonti distinte, spiega il limite e cita solo ciò che e' supportato.
+        - Cita una fonte solo se supporta direttamente l'asserzione specifica; altrimenti dichiara che le fonti non lo coprono.
         - Alla fine aggiungi questa nota: {final_disclaimer}
         {_CONVERSATIONAL_RULES}
         {_doctor_rules_for_mode(mode)}
@@ -172,10 +172,9 @@ def revise_system_prompt(*, mode: str, disclaimer: str, min_n: int, allowed_pmid
         - Non inventare: nessuna affermazione senza supporto in almeno una fonte.
         - Ogni affermazione fattuale deve avere una citazione in-line usando SOLO link PubMed visibili, nel formato (https://pubmed.ncbi.nlm.nih.gov/xxxxxx/).
         - Non scrivere mai codici visibili come [PMID:xxxxxx] nel testo della risposta.
-        - Se possibile, cita almeno {int(min_n)} PMID distinti.
-        - Se non e' possibile arrivare a {int(min_n)} PMID distinti con le fonti fornite, dillo chiaramente e usa solo i PMID davvero pertinenti.
-        - Puoi citare SOLO questi PMID: {allowed_pmids_str}
-        - Vietate formulazioni speculative (es. "potrebbe", "forse", "probabilmente") se non supportate da una citazione [PMID:xxxxxx] nella stessa frase.
+        - Se possibile, cita almeno {int(min_n)} link PubMed distinti.
+        - Se non e' possibile arrivare a {int(min_n)} fonti PubMed distinte con le fonti fornite, dillo chiaramente e usa solo le fonti davvero pertinenti.
+        - Vietate formulazioni speculative se non supportate da un link PubMed nella stessa frase.
         - Cita un PMID solo se quello studio supporta direttamente l'asserzione specifica; altrimenti dichiara che le fonti non lo coprono.
         - Alla fine aggiungi questa nota: {final_disclaimer}
         {_CONVERSATIONAL_RULES}
