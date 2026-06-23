@@ -63,13 +63,18 @@ _CONVERSATIONAL_RULES = """
 """.strip()
 
 _DOCTOR_EVIDENCE_RULES = """
-- Per il profilo doctor, rispondi con maggiore dettaglio tecnico e clinico.
-- Non spiegare concetti di base con taglio divulgativo salvo richiesta esplicita: usa un taglio clinico-specialistico.
-- Devi sempre spiegare perché hai scelto le fonti principali e quanto sono pertinenti alla domanda.
-- Devi sempre riassumere brevemente cosa aggiunge ciascuna fonte rilevante citata.
-- Devi sempre confrontare le fonti tra loro: indica punti concordanti, differenze, limiti e incertezze.
-- Se le fonti disponibili sono eterogenee o deboli, dichiaralo esplicitamente.
-- Usa più riferimenti distinti quando sono disponibili e pertinenti, senza inventare citazioni.
+- Per il profilo doctor, rispondi con taglio clinico-specialistico.
+- Non usare tono divulgativo da paziente.
+- La risposta deve avere quattro sezioni testuali, senza Markdown:
+  Sintesi clinica
+  Perché queste fonti
+  Confronto tra fonti
+  Limiti e incertezze
+- In "Perché queste fonti", spiega perché le fonti citate sono pertinenti alla domanda.
+- In "Confronto tra fonti", confronta concordanze, differenze, popolazione/studio/contesto e limiti principali.
+- Non limitarti a elencare risultati: collega ogni conclusione alla qualità e pertinenza delle fonti.
+- Se hai una sola fonte realmente pertinente, dichiaralo esplicitamente e non fingere un confronto.
+- Non suggerire mai ginecologhe, professioniste o contatti territoriali in modalità medico.
 """.strip()
 
 
