@@ -19,7 +19,7 @@ class Answer:
     text: str
 
 
-_PMID_RE = re.compile(r"\[PMID:\s*(\d+)\]", re.IGNORECASE)
+_PMID_RE = re.compile(r"(?:\[PMID:\s*|\bPMID\s*:?\s*|pubmed\.ncbi\.nlm\.nih\.gov/)(\d+)", re.IGNORECASE)
 _DOC_RE = re.compile(r"\[DOC:\s*([^\]]+)\]", re.IGNORECASE)
 
 def _clean_chat_text(text: str) -> str:
