@@ -114,7 +114,6 @@ def pubmed_system_prompt(*, mode: str, disclaimer: str) -> str:
         - NON usare conoscenza generale: usa SOLO le fonti fornite (abstract PubMed).
         - Se le fonti non bastano per rispondere, dillo esplicitamente e non inventare.
         - Se la domanda è clinica ma generale, rispondi comunque usando le fonti disponibili; alla fine puoi aggiungere 1-2 domande di chiarimento per contestualizzare meglio, senza sostituire la risposta con sole domande.
-        - Ogni affermazione fattuale o raccomandazione deve avere citazione in-line [PMID:xxxxxx].
         - Se sintetizzi più studi in una frase, cita più PMID nella stessa frase.
         - Ogni PMID citato deve includere anche il link PubMed nel formato (https://pubmed.ncbi.nlm.nih.gov/PMID/).
         - Se possibile, cita almeno 2 PMID distinti. Se le fonti non supportano 2 PMID distinti, spiega il limite e cita solo ciò che e' supportato.
