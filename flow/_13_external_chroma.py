@@ -84,12 +84,16 @@ def retrieve_top_n_chroma(
 
     out: list[ExternalDoc] = []
     for doc_id, text, meta in zip(ids, docs, metas):
+        text_value = str(text or "")
         title, url = _meta_title_url(meta)
+        if not title:
+            title = _extract_title_from_text(text_value)
+        
         out.append(
             ExternalDoc(
                 doc_id=str(doc_id),
                 title=title,
-                text=str(text or ""),
+                text=text_value,
                 url=url,
             )
         )
@@ -104,6 +108,21 @@ def _meta_title_url(meta: object) -> tuple[str, Optional[str]]:
     if url is not None:
         url = str(url).strip() or None
     return (title, url)
+
+def _extract_title_from_text(text: str) -> str:
+    s = (text or "").strip()
+    if not s:
+        return ""
+    marker = "TITLE:"
+    abstract_marker = "ABSTRACT:"
+    upper = s.upper()
+    if marker in upper:
+        start = upper.find(marker) + len(marker)
+        end = upper.find(abstract_marker, start)
+        if end == -1:
+            end = min(len(s), start + 180)
+        return s[start:end].strip(" .:\n\t")
+    return ""
 
 
 def _normalize_windows_drive_path(p: str) -> str:
