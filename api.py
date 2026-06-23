@@ -472,7 +472,7 @@ def chat(req: ChatRequest) -> ChatResponse:
         citations = _build_citations(conn, cited_pmids)
         citations.extend(_build_external_citations(external_docs, cited_doc_ids))
 
-        if not citations:
+        if not citations and not papers and not external_docs:
             ans = answer_clarification(
                 oai,
                 model=settings.openai_chat_model,
@@ -529,7 +529,7 @@ def build_gyn_suggestions(req: ChatRequest) -> list[GynSuggestionOut]:
         or req.longitude is not None
     )
 
-    if req.mode == "doctor" or not has_location:
+    if _is_doctor_mode(req.mode) or not has_location:
         return []
 
     raw_suggestions = suggest_top3(
