@@ -73,7 +73,11 @@ _DOCTOR_EVIDENCE_RULES = """
 - Non usare tono divulgativo da paziente.
 - Prima rispondi estesamente alla domanda clinica, in forma discorsiva: almeno 10-14 paragrafi sostanziali quando le fonti disponibili lo consentono.
 - Non usare titoli o intestazioni visibili come "Sintesi clinica", "Perché queste fonti", "Confronto tra fonti" o "Limiti".
-- Dopo la risposta principale, aggiungi una parte finale sempre discorsiva che spieghi perché le fonti citate sono pertinenti, cosa aggiunge ciascuna fonte, concordanze, differenze, limiti e incertezze.
+- Gli ultimi 3 paragrafi della risposta sono obbligatori e devono essere sempre presenti, senza titoli o intestazioni.
+- Il terzultimo paragrafo deve spiegare perché le fonti citate sono state scelte e perché sono pertinenti alla domanda clinica.
+- Il penultimo paragrafo deve riassumere cosa aggiunge ciascuna fonte citata, citando ogni fonte con il suo link PubMed o riferimento Europe PMC.
+- L'ultimo paragrafo deve confrontare le fonti tra loro: concordanze, differenze, popolazioni studiate, outcome, limiti, incertezze e applicabilità clinica.
+- Non usare titoli per questi tre paragrafi finali: devono sembrare parte naturale della risposta discorsiva.
 - Se hai una sola fonte realmente pertinente, dichiaralo esplicitamente e non fingere un confronto.
 - Non suggerire mai ginecologhe, professioniste o contatti territoriali in modalità medico.
 """.strip()
