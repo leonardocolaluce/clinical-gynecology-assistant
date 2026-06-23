@@ -20,14 +20,14 @@ class Answer:
 
 
 _PMID_RE = re.compile(r"(?:\[PMID:\s*|\bPMID\s*:?\s*|pubmed\.ncbi\.nlm\.nih\.gov/)(\d+)", re.IGNORECASE)
-_DOC_RE = re.compile(r"\[DOC:\s*([^\]]+)\]", re.IGNORECASE)
+_DOC_RE = re.compile(r"\(Europe PMC:\s*([^)]+)\)", re.IGNORECASE)
 
 def _clean_chat_text(text: str) -> str:
     return (text or "").replace("**", "").replace("*", "").strip()
 
 def _max_tokens_for_mode(mode: str) -> int | None:
     if (mode or "").strip().lower() in {"doctor", "medico", "ginecologo", "ginecologa"}:
-        return 3000
+        return 4000
     return None
 
 def _format_history(history: list[dict[str, str]] | None) -> str:
@@ -162,10 +162,10 @@ def extract_cited_doc_ids(text: str) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
     for m in _DOC_RE.finditer(text or ""):
-        doc_id = (m.group(1) or "").strip()
-        if doc_id and doc_id not in seen:
-            seen.add(doc_id)
-            out.append(doc_id)
+        title = (m.group(1) or "").strip().lower()
+        if title and title not in seen:
+            seen.add(title)
+            out.append(title)
     return out
     
 def revise_to_meet_min_citations(
