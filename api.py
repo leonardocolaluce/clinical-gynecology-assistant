@@ -182,6 +182,17 @@ def chat(req: ChatRequest) -> ChatResponse:
 
     if not _is_doctor_mode(req.mode) and _asked_for_gyn_area(history):
         area = (req.area_of_interest or req.message or "").strip()
+    
+        if _vague_gyn_area(area):
+            run = db.create_retrieval_run(conn, query="gyn_area_request", found_count=0, pmids=[])
+            answer_text = "Mi serve una città o una zona precisa per cercare nel database. Quale area preferisci?"
+            db.finalize_message_ok(conn, message_id=message_id, answer=answer_text, retrieval_run_id=run.id, cited_pmids=[])
+            return ChatResponse(
+                answer=answer_text,
+                retrieval=RetrievalInfo(query="gyn_area_request", found=0, pmids=[], cached=0, fetched=0),
+                citations=[],
+                suggestions=[],
+            )
         suggestions = build_gyn_suggestions(
             ChatRequest(message=req.message, mode=req.mode, session_id=session_id, city=area, address_hint=area)
         )
@@ -203,7 +214,7 @@ def chat(req: ChatRequest) -> ChatResponse:
         )
 
     explicit_area = None if _is_doctor_mode(req.mode) else _extract_area_from_gyn_request(req.message)
-    if explicit_area:
+    if explicit_area and not _vague_gyn_area(explicit_area):
         suggestions = build_gyn_suggestions(
             ChatRequest(
                 message=req.message,
@@ -228,6 +239,28 @@ def chat(req: ChatRequest) -> ChatResponse:
             retrieval=RetrievalInfo(query="gyn_suggestions", found=0, pmids=[], cached=0, fetched=0),
             citations=[],
             suggestions=suggestions,
+        )
+
+    if explicit_area and _vague_gyn_area(explicit_area):
+        run = db.create_retrieval_run(conn, query="gyn_area_request", found_count=0, pmids=[])
+        answer_text = "Certo. In quale città o zona vuoi cercare una ginecologa?"
+        db.finalize_message_ok(conn, message_id=message_id, answer=answer_text, retrieval_run_id=run.id, cited_pmids=[])
+        return ChatResponse(
+            answer=answer_text,
+            retrieval=RetrievalInfo(query="gyn_area_request", found=0, pmids=[], cached=0, fetched=0),
+            citations=[],
+            suggestions=[],
+        )
+
+    if not _is_doctor_mode(req.mode) and _explicit_gyn_request(req.message):
+        run = db.create_retrieval_run(conn, query="gyn_area_request", found_count=0, pmids=[])
+        answer_text = "Certo. In quale città o zona vuoi cercare una ginecologa?"
+        db.finalize_message_ok(conn, message_id=message_id, answer=answer_text, retrieval_run_id=run.id, cited_pmids=[])
+        return ChatResponse(
+            answer=answer_text,
+            retrieval=RetrievalInfo(query="gyn_area_request", found=0, pmids=[], cached=0, fetched=0),
+            citations=[],
+            suggestions=[],
         )
 
     if _needs_clarification(req.message):
@@ -582,6 +615,19 @@ def _explicit_gyn_request(text: str) -> bool:
             "da chi posso andare",
         ]
     )
+
+def _vague_gyn_area(text: str) -> bool:
+    q = (text or "").lower()
+    return any(x in q for x in [
+        "dove vivo",
+        "vicino a me",
+        "vicino casa",
+        "mia zona",
+        "nella mia zona",
+        "nella tua zona",
+        "nella tua area",
+        "qui vicino",
+    ])
 
 def _extract_area_from_gyn_request(text: str) -> str | None:
     q = (text or "").strip().lower()
