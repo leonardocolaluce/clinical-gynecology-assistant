@@ -681,11 +681,11 @@ def _build_citations(conn: Any, pmids: list[str]) -> list[Citation]:
     return out
 
 def _build_external_citations(external_docs: list[Any], doc_ids: list[str]) -> list[Citation]:
-    by_id = {str(doc.doc_id): doc for doc in external_docs or []}
+    by_title = {(doc.title or "").strip().lower(): doc for doc in external_docs or []}
     out: list[Citation] = []
 
-    for doc_id in doc_ids:
-        doc = by_id.get(str(doc_id))
+    for doc_title in doc_ids:
+        doc = by_title.get(str(doc_title).strip().lower())
         if not doc:
             continue
 
