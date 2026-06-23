@@ -602,6 +602,9 @@ def _clinical_turns(history: list[dict[str, str]]) -> int:
 def _should_offer_gyn(req: ChatRequest, history: list[dict[str, str]], answer_text: str, citations: list[Citation]) -> bool:
     if _is_doctor_mode(req.mode) or _already_offered_gyn(history):
         return False
+    if _clinical_turns(history) < 2:
+        return False
+
     if _explicit_gyn_request(req.message):
         return True
     if "rivolg" in answer_text.lower() and "ginecolog" in answer_text.lower():
