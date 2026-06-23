@@ -137,7 +137,7 @@ def answer_with_pubmed_and_external(
 def _format_external_context(docs: list[ExternalDoc]) -> str:
     blocks: list[str] = []
     for d in docs:
-        header = f"DOC {d.doc_id} | {d.title}".strip()
+        header = f"Fonte Europe PMC: {d.title or d.doc_id}".strip()
         link = (d.url or "").strip()
         body = (d.text or "").strip() or "<no text>"
         block = header
