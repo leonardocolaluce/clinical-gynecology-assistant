@@ -27,7 +27,7 @@ def _clean_chat_text(text: str) -> str:
 
 def _max_tokens_for_mode(mode: str) -> int | None:
     if (mode or "").strip().lower() in {"doctor", "medico", "ginecologo", "ginecologa"}:
-        return 1800
+        return 3000
     return None
 
 def _format_history(history: list[dict[str, str]] | None) -> str:
