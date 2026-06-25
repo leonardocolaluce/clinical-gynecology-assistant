@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import json
 import random
 
 from .flow._10_prompts import load_prompt_styles, save_prompt_styles
@@ -20,7 +20,6 @@ from .flow._8_answering import (
     answer_clarification,
     answer_direct,
     answer_gyn_suggestions_result,
-    answer_with_gyn_area_offer,
     answer_with_pubmed,
     answer_with_pubmed_and_external,
     extract_cited_pmids,
@@ -180,88 +179,97 @@ def chat(req: ChatRequest) -> ChatResponse:
     message_id = db.create_message(conn, mode=req.mode, question=req.message, session_id=session_id)
     oai = OpenAIClient(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
 
-    if not _is_doctor_mode(req.mode) and _asked_for_gyn_area(history):
-        area = (req.area_of_interest or req.message or "").strip()
-    
-        if _vague_gyn_area(area):
-            run = db.create_retrieval_run(conn, query="gyn_area_request", found_count=0, pmids=[])
-            answer_text = "Mi serve una città o una zona precisa per cercare nel database. Quale area preferisci?"
-            db.finalize_message_ok(conn, message_id=message_id, answer=answer_text, retrieval_run_id=run.id, cited_pmids=[])
+    if not _is_doctor_mode(req.mode):
+        gyn_action = _gyn_orchestrator(
+            oai,
+            model=settings.openai_chat_model,
+            message=req.message,
+            history=history,
+            phase="before_answer",
+        )
+
+        if gyn_action["action"] == "ask_area":
+            answer_text = str(gyn_action["reply"] or "").strip()
+
+            run = db.create_retrieval_run(
+                conn,
+                query="gyn_area_request",
+                found_count=0,
+                pmids=[],
+            )
+
+            db.finalize_message_ok(
+                conn,
+                message_id=message_id,
+                answer=answer_text,
+                retrieval_run_id=run.id,
+                cited_pmids=[],
+            )
+            conn.close()
+
             return ChatResponse(
                 answer=answer_text,
-                retrieval=RetrievalInfo(query="gyn_area_request", found=0, pmids=[], cached=0, fetched=0),
+                retrieval=RetrievalInfo(
+                    query="gyn_area_request",
+                    found=0,
+                    pmids=[],
+                    cached=0,
+                    fetched=0,
+                ),
                 citations=[],
                 suggestions=[],
             )
-        suggestions = build_gyn_suggestions(
-            ChatRequest(message=req.message, mode=req.mode, session_id=session_id, city=area, address_hint=area)
-        )
-        run = db.create_retrieval_run(conn, query="gyn_suggestions", found_count=0, pmids=[])
-        ans = answer_gyn_suggestions_result(
-            oai,
-            model=settings.openai_chat_model,
-            area=area,
-            count=len(suggestions),
-            mode=req.mode,
-        )
-        answer_text = (ans.text or "").strip()
-        db.finalize_message_ok(conn, message_id=message_id, answer=answer_text, retrieval_run_id=run.id, cited_pmids=[])
-        return ChatResponse(
-            answer=answer_text,
-            retrieval=RetrievalInfo(query="gyn_suggestions", found=0, pmids=[], cached=0, fetched=0),
-            citations=[],
-            suggestions=suggestions,
-        )
 
-    explicit_area = None if _is_doctor_mode(req.mode) else _extract_area_from_gyn_request(req.message)
-    if explicit_area and not _vague_gyn_area(explicit_area):
-        suggestions = build_gyn_suggestions(
-            ChatRequest(
-                message=req.message,
-                mode=req.mode,
-                session_id=session_id,
-                city=explicit_area,
-                address_hint=explicit_area,
+        if gyn_action["action"] == "search":
+            area = str(gyn_action["area"] or "").strip()
+
+            suggestions = build_gyn_suggestions(
+                ChatRequest(
+                    message=req.message,
+                    mode=req.mode,
+                    session_id=session_id,
+                    city=area,
+                    address_hint=area,
+                )
             )
-        )
-        run = db.create_retrieval_run(conn, query="gyn_suggestions", found_count=0, pmids=[])
-        ans = answer_gyn_suggestions_result(
-            oai,
-            model=settings.openai_chat_model,
-            area=explicit_area,
-            count=len(suggestions),
-            mode=req.mode,
-        )
-        answer_text = (ans.text or "").strip()
-        db.finalize_message_ok(conn, message_id=message_id, answer=answer_text, retrieval_run_id=run.id, cited_pmids=[])
-        return ChatResponse(
-            answer=answer_text,
-            retrieval=RetrievalInfo(query="gyn_suggestions", found=0, pmids=[], cached=0, fetched=0),
-            citations=[],
-            suggestions=suggestions,
-        )
 
-    if explicit_area and _vague_gyn_area(explicit_area):
-        run = db.create_retrieval_run(conn, query="gyn_area_request", found_count=0, pmids=[])
-        answer_text = "Certo. In quale città o zona vuoi cercare una ginecologa?"
-        db.finalize_message_ok(conn, message_id=message_id, answer=answer_text, retrieval_run_id=run.id, cited_pmids=[])
-        return ChatResponse(
-            answer=answer_text,
-            retrieval=RetrievalInfo(query="gyn_area_request", found=0, pmids=[], cached=0, fetched=0),
-            citations=[],
-            suggestions=[],
-        )
+            run = db.create_retrieval_run(
+                conn,
+                query="gyn_suggestions",
+                found_count=len(suggestions),
+                pmids=[],
+            )
 
-    if not _is_doctor_mode(req.mode) and _explicit_gyn_request(req.message):
-        run = db.create_retrieval_run(conn, query="gyn_area_request", found_count=0, pmids=[])
-        answer_text = "Certo. In quale città o zona vuoi cercare una ginecologa?"
-        db.finalize_message_ok(conn, message_id=message_id, answer=answer_text, retrieval_run_id=run.id, cited_pmids=[])
-        return ChatResponse(
-            answer=answer_text,
-            retrieval=RetrievalInfo(query="gyn_area_request", found=0, pmids=[], cached=0, fetched=0),
-            citations=[],
-            suggestions=[],
-        )
+            ans = answer_gyn_suggestions_result(
+                oai,
+                model=settings.openai_chat_model,
+                area=area,
+                count=len(suggestions),
+                mode=req.mode,
+            )
+            answer_text = (ans.text or "").strip()
+
+            db.finalize_message_ok(
+                conn,
+                message_id=message_id,
+                answer=answer_text,
+                retrieval_run_id=run.id,
+                cited_pmids=[],
+            )
+            conn.close()
+
+            return ChatResponse(
+                answer=answer_text,
+                retrieval=RetrievalInfo(
+                    query="gyn_suggestions",
+                    found=len(suggestions),
+                    pmids=[],
+                    cached=0,
+                    fetched=0,
+                ),
+                citations=[],
+                suggestions=suggestions,
+            )
 
     if _needs_clarification(req.message):
         run = db.create_retrieval_run(conn, query="clarification", found_count=0, pmids=[])
@@ -325,7 +333,7 @@ def chat(req: ChatRequest) -> ChatResponse:
             cited_pmids: list[str] = []
             citations: list[Citation] = []
             db.finalize_message_ok(conn, message_id=message_id, answer=answer_text, retrieval_run_id=run.id, cited_pmids=cited_pmids)
-            suggestions = build_gyn_suggestions(req)
+            suggestions: list[GynSuggestionOut] = []
 
             return ChatResponse(
                 answer=answer_text,
@@ -492,16 +500,22 @@ def chat(req: ChatRequest) -> ChatResponse:
             flush=True,
         )
 
-        suggestions = build_gyn_suggestions(req)
+        suggestions: list[GynSuggestionOut] = []
 
-        if not suggestions and _should_offer_gyn(req, history, answer_text, citations):
-            ans = answer_with_gyn_area_offer(
+        if not _is_doctor_mode(req.mode) and len(history) >= 2:
+            gyn_offer = _gyn_orchestrator(
                 oai,
                 model=settings.openai_chat_model,
+                message=req.message,
+                history=history,
+                phase="after_answer",
                 current_answer=answer_text,
-                mode=req.mode,
             )
-            answer_text = (ans.text or "").strip()
+
+            if gyn_offer["action"] == "offer":
+                offer_text = str(gyn_offer["reply"] or "").strip()
+                if offer_text:
+                    answer_text = answer_text.rstrip() + "\n\n" + offer_text
 
         return ChatResponse(
             answer=answer_text,
@@ -566,6 +580,70 @@ _GENERIC_SYMPTOMS = {
     "nausea",
 }
 
+def _detect_gyn_request(
+    oai: OpenAIClient,
+    *,
+    model: str,
+    message: str,
+    history: list[dict[str, str]],
+) -> tuple[bool, str | None]:
+    recent_history = "\n".join(
+        f"Utente: {item.get('question', '')}\n"
+        f"Assistente: {item.get('answer', '')}"
+        for item in history[-5:]
+    )
+
+    prompt = f"""
+Analizza il messaggio e stabilisci se l'utente vuole trovare, scegliere
+o ricevere il contatto di una ginecologa o professionista ginecologica.
+
+Comprendi qualsiasi formulazione naturale, inclusi:
+- dottoressa, ginecologa, specialista, professionista;
+- "da chi posso andare";
+- "chi mi consigli";
+- "conosci qualcuna";
+- "vicino a me";
+- richieste espresse nel contesto dei messaggi precedenti.
+
+Estrai città o zona solo se indicata esplicitamente nel messaggio o nella
+conversazione. Non inventare località.
+
+Conversazione:
+{recent_history or "<nessuna>"}
+
+Messaggio attuale:
+{message}
+
+Rispondi esclusivamente con JSON:
+{{
+  "wants_gynecologist": true,
+  "area": "Roma"
+}}
+
+Se manca la località, usa null.
+""".strip()
+
+    result = oai.chat(
+        model=model,
+        temperature=0.0,
+        messages=[
+            {
+                "role": "system",
+                "content": "Sei un classificatore di richieste. Produci solo JSON valido.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+    )
+
+    try:
+        data = json.loads(result.strip())
+    except Exception:
+        return False, None
+
+    wants = bool(data.get("wants_gynecologist"))
+    area = str(data.get("area") or "").strip() or None
+    return wants, area
+
 def _needs_clarification(text: str) -> bool:
     q = (text or "").strip().lower()
     words = [w for w in q.replace("?", " ").split() if w]
@@ -576,90 +654,109 @@ def _needs_clarification(text: str) -> bool:
 def _is_doctor_mode(mode: str) -> bool:
     return (mode or "").strip().lower() in {"doctor", "medico", "ginecologo", "ginecologa"}
 
-def _asked_for_gyn_area(history: list[dict[str, str]]) -> bool:
-    prompts = (
-        "area di interesse",
-        "città o zona",
-        "zona",
-        "area",
-        "in quell'area",
-        "in quella zona",
-        "indicami",
-        "mi indichi",
-        "puoi indicarmi",
-        "posso provare a suggerire alcune ginecologhe",
-        "posso suggerirti alcune ginecologhe",
-    )
-    return any(
-        any(prompt in (h.get("answer") or "").lower() for prompt in prompts)
-        for h in history[-3:]
+def _gyn_orchestrator(
+    oai: OpenAIClient,
+    *,
+    model: str,
+    message: str,
+    history: list[dict[str, str]],
+    phase: str,
+    current_answer: str | None = None,
+) -> dict[str, str | None]:
+    conversation = "\n\n".join(
+        f"Utente: {(item.get('question') or '').strip()}\n"
+        f"Assistente: {(item.get('answer') or '').strip()}"
+        for item in history[-10:]
     )
 
-def _already_offered_gyn(history: list[dict[str, str]]) -> bool:
-    return any("posso provare a suggerirti" in (h.get("answer") or "").lower() for h in history)
+    system_prompt = """
+Sei l'orchestratore della funzione che cerca ginecologhe in un database locale.
 
-def _explicit_gyn_request(text: str) -> bool:
-    q = (text or "").lower()
-    return any(
-        x in q
-        for x in [
-            "consigli una ginecologa",
-            "consigliami una ginecologa",
-            "trova una ginecologa",
-            "trovami una ginecologa",
-            "trovami medici",
-            "trova medici",
-            "cerca medici",
-            "ginecologa vicino",
-            "specialista vicino",
-            "da chi posso andare",
-        ]
+Comprendi semanticamente messaggio e conversazione, anche con linguaggio
+colloquiale, richieste indirette o errori grammaticali.
+
+Azioni:
+- "none": non occorre usare il database delle ginecologhe.
+- "ask_area": l'utente cerca una ginecologa o professionista, ma manca una località precisa.
+- "search": l'utente cerca una professionista e la località è disponibile.
+- "offer": dopo una conversazione clinica è opportuno proporre la ricerca.
+
+Regole:
+- Cerca la località anche nella cronologia.
+- Non inventare mai una località.
+- "Vicino a me" o "nella mia zona" non sono località sufficienti.
+- Se l'assistente aveva chiesto la zona e l'utente risponde con una città,
+  usa "search".
+- Con "ask_area", genera in "reply" una domanda naturale e contestuale.
+- Con "offer", genera in "reply" una proposta breve e non insistente.
+- Con "search", inserisci in "area" solo città o zona da passare al database.
+- Non suggerire ricerche online: il sistema possiede un database locale.
+- Restituisci esclusivamente JSON valido.
+""".strip()
+
+    user_prompt = f"""
+Fase: {phase}
+
+Conversazione precedente:
+{conversation or "<nessuna>"}
+
+Messaggio attuale:
+{message}
+
+Risposta clinica corrente:
+{current_answer or "<nessuna>"}
+
+Nella fase "before_answer" usa solo:
+"none", "ask_area", "search".
+
+Nella fase "after_answer" usa solo:
+"none", "offer".
+
+Formato:
+{{
+  "action": "none",
+  "area": null,
+  "reply": null
+}}
+""".strip()
+
+    try:
+        raw = oai.chat(
+            model=model,
+            temperature=0.0,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+        data = json.loads((raw or "").strip())
+    except Exception:
+        return {"action": "none", "area": None, "reply": None}
+
+    action = str(data.get("action") or "none").strip().lower()
+    area = str(data.get("area") or "").strip() or None
+    reply = str(data.get("reply") or "").strip() or None
+
+    allowed = (
+        {"none", "ask_area", "search"}
+        if phase == "before_answer"
+        else {"none", "offer"}
     )
 
-def _vague_gyn_area(text: str) -> bool:
-    q = (text or "").lower()
-    return any(x in q for x in [
-        "dove vivo",
-        "vicino a me",
-        "vicino casa",
-        "mia zona",
-        "nella mia zona",
-        "nella tua zona",
-        "nella tua area",
-        "qui vicino",
-    ])
+    if action not in allowed:
+        return {"action": "none", "area": None, "reply": None}
 
-def _extract_area_from_gyn_request(text: str) -> str | None:
-    q = (text or "").strip().lower()
-    if not q:
-        return None
-    request_terms = ("ginecolog", "medic", "dottor", "specialist", "trovami", "trova", "cerca", "consigli")
-    if not any(term in q for term in request_terms):
-        return None
-    for marker in (" vicino a ", " vicino ", " in zona ", " zona ", " a ", " in ", " su "):
-        if marker in q:
-            area = q.split(marker, 1)[1].strip(" .?!,;:")
-            return area or None
-    return None
+    if action == "search" and not area:
+        return {"action": "none", "area": None, "reply": None}
 
-def _clinical_turns(history: list[dict[str, str]]) -> int:
-    return sum(1 for h in history if (h.get("question") or "").strip())
+    if action in {"ask_area", "offer"} and not reply:
+        return {"action": "none", "area": None, "reply": None}
 
-def _should_offer_gyn(req: ChatRequest, history: list[dict[str, str]], answer_text: str, citations: list[Citation]) -> bool:
-    if _is_doctor_mode(req.mode) or _already_offered_gyn(history):
-        return False
-    if _clinical_turns(history) < 2:
-        return False
-
-    if _explicit_gyn_request(req.message):
-        return True
-    if "rivolg" in answer_text.lower() and "ginecolog" in answer_text.lower():
-        return True
-    if _clinical_turns(history) >= 3:
-        return True
-    if not citations:
-        return True
-    return False
+    return {
+        "action": action,
+        "area": area,
+        "reply": reply,
+    }
 
 def _build_citations(conn: Any, pmids: list[str]) -> list[Citation]:
     out: list[Citation] = []
