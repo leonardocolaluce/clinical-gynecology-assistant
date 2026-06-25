@@ -493,8 +493,6 @@ def chat(req: ChatRequest) -> ChatResponse:
             cited_pmids = []
             cited_doc_ids = []
 
-        db.finalize_message_ok(conn, message_id=message_id, answer=answer_text, retrieval_run_id=run.id, cited_pmids=cited_pmids)
-
         print(
             f"[RETRIEVAL] query={query_used!r} found={len(pmids)} cached={len(pmids) - fetched} fetched={fetched}",
             flush=True,
@@ -517,6 +515,14 @@ def chat(req: ChatRequest) -> ChatResponse:
                 if offer_text:
                     answer_text = answer_text.rstrip() + "\n\n" + offer_text
 
+        db.finalize_message_ok(
+            conn,
+            message_id=message_id,
+            answer=answer_text,
+            retrieval_run_id=run.id,
+            cited_pmids=cited_pmids,
+        )
+        
         return ChatResponse(
             answer=answer_text,
             retrieval=RetrievalInfo(
