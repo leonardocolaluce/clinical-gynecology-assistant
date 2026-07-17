@@ -77,6 +77,43 @@ class ChatResponse(BaseModel):
     citations: list[Citation]
     suggestions: list[GynSuggestionOut] = []
 
+class RetrievalOnlyRequest(BaseModel):
+    message: str = Field(..., min_length=1)
+    mode: str = Field(default="patient", description="patient|doctor|menopause")
+    session_id: Optional[str] = None
+    context: Optional[str] = None
+    pubmed_k: int = Field(default=5, ge=0, le=5)
+    external_k: int = Field(default=5, ge=0, le=5)
+
+class RetrievalSourceOut(BaseModel):
+    source: str
+    title: str
+    url: Optional[str] = None
+    full_text: str
+    score: Optional[float] = None
+    paper: dict[str, Any]
+
+class RetrievalOnlyResponse(BaseModel):
+    message: str
+    mode: str
+    retrieval_query: str
+    pubmed_count: int
+    external_count: int
+    total_count: int
+    sources: list[RetrievalSourceOut]
+
+
+RETRIEVAL_RECOMMENDED_TEXT_CHARS = 15_000
+RETRIEVAL_MAX_TEXT_CHARS = 30_000
+RETRIEVAL_MAX_JSON_BYTES = 100 * 1024
+TRUNCATION_SUFFIX = " ... [truncated]"
+
+
+class SupportfastRetrievalRequest(BaseModel):
+    message: str = Field(..., min_length=1)
+    mode: Optional[str] = Field(default="patient", description="patient|doctor|menopause")
+    context: str = ""
+
 class StatusMessageResponse(BaseModel):
     message: str
     initial_delay_seconds: int = 5
@@ -151,6 +188,40 @@ def get_prompts() -> PromptConfig:
 def save_prompts(payload: PromptConfig) -> dict[str, str]:
     save_prompt_styles(patient=payload.patient, menopause=payload.menopause, doctor=payload.doctor)
     return {"status": "ok"}
+
+@app.post("/retrieval", response_model=RetrievalOnlyResponse)
+def retrieval_only(req: RetrievalOnlyRequest) -> RetrievalOnlyResponse:
+    settings = load_settings()
+    if not settings.openai_api_key:
+        raise HTTPException(status_code=500, detail="Missing OPENAI_API_KEY")
+
+    conn = db.connect()
+    db.init_db(conn)
+    try:
+        return _run_retrieval_only(conn=conn, req=req, settings=settings)
+    finally:
+        conn.close()
+
+@app.post("/supportfast/retrieval", response_model=RetrievalOnlyResponse)
+def supportfast_retrieval(req: SupportfastRetrievalRequest) -> RetrievalOnlyResponse:
+    settings = load_settings()
+    if not settings.openai_api_key:
+        raise HTTPException(status_code=500, detail="Missing OPENAI_API_KEY")
+
+    internal_req = RetrievalOnlyRequest(
+        message=req.message,
+        mode=req.mode or "patient",
+        context=req.context or "",
+        pubmed_k=5,
+        external_k=5,
+    )
+
+    conn = db.connect()
+    db.init_db(conn)
+    try:
+        return _run_retrieval_only(conn=conn, req=internal_req, settings=settings)
+    finally:
+        conn.close()
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest) -> ChatResponse:
@@ -342,11 +413,10 @@ def chat(req: ChatRequest) -> ChatResponse:
                 suggestions=suggestions,
             )
 
-        doctor_mode = _is_doctor_mode(req.mode)
-        pubmed_retmax = max(int(settings.pubmed_retmax), 25) if doctor_mode else int(settings.pubmed_retmax)
-        pubmed_top_k = max(int(settings.top_k), 20) if doctor_mode else int(settings.top_k)
-        external_candidates = max(int(settings.external_candidates), 20) if doctor_mode else int(settings.external_candidates)
-        final_external_k = max(int(settings.final_external_k), 20) if doctor_mode else int(settings.final_external_k)
+        pubmed_retmax = int(settings.pubmed_retmax)
+        pubmed_top_k = int(settings.top_k)
+        external_candidates = int(settings.external_candidates)
+        final_external_k = int(settings.final_external_k)
 
         pmids: list[str] = []
         query_used: str = ""
@@ -540,6 +610,220 @@ def chat(req: ChatRequest) -> ChatResponse:
         raise
     finally:
         conn.close()
+
+def _run_retrieval_only(*, conn: Any, req: RetrievalOnlyRequest, settings: Any) -> RetrievalOnlyResponse:
+    pubmed_k = max(0, min(int(req.pubmed_k), 5))
+    external_k = max(0, min(int(req.external_k), 5))
+    retrieval_query = "\n\n".join(
+        part.strip()
+        for part in ((req.context or ""), req.message)
+        if part and part.strip()
+    )
+
+    oai = OpenAIClient(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
+    pubmed = PubMedClient(
+        api_key=settings.ncbi_api_key,
+        tool=settings.ncbi_tool,
+        email=settings.ncbi_email,
+        timeout_s=settings.pubmed_timeout_s,
+    )
+
+    pmids: list[str] = []
+    query_used = ""
+    if pubmed_k > 0:
+        for term in build_pubmed_term_candidates(retrieval_query):
+            query_used = term
+            pmids = pubmed.esearch(term, retmax=pubmed_k)
+            if len(pmids) >= pubmed_k:
+                break
+
+    pmids = pmids[:pubmed_k]
+    cached = db.get_cached_papers(conn, pmids)
+    missing = [p for p in pmids if p not in cached]
+    if missing:
+        fetched_papers = pubmed.efetch(missing)
+        db.upsert_papers(conn, fetched_papers)
+        cached = db.get_cached_papers(conn, pmids)
+
+    papers = [cached[p] for p in pmids if p in cached]
+    pubmed_scores: dict[str, float] = {}
+    if papers and pubmed_k > 0 and pubmed_k < len(papers):
+        reranked = select_top_k(
+            oai,
+            embed_model=settings.openai_embed_model,
+            question=retrieval_query,
+            papers=papers,
+            top_k=pubmed_k,
+        )
+        papers = reranked.papers
+        pubmed_scores = {
+            paper.pmid: float(score)
+            for paper, score in zip(reranked.papers, reranked.scores)
+        }
+
+    sources: list[RetrievalSourceOut] = []
+    for p in papers[:pubmed_k]:
+        abstract = p.abstract or ""
+        sources.append(
+            RetrievalSourceOut(
+                source="pubmed",
+                title=p.title or "",
+                url=p.pubmed_url,
+                full_text=abstract,
+                score=pubmed_scores.get(p.pmid),
+                paper={
+                    "pmid": p.pmid,
+                    "title": p.title,
+                    "abstract": p.abstract,
+                    "year": p.year,
+                    "journal": p.journal,
+                    "doi": p.doi,
+                    "url": p.pubmed_url,
+                },
+            )
+        )
+
+    external_sources: list[RetrievalSourceOut] = []
+    if settings.external_rag_db_path and external_k > 0:
+        if settings.external_rag_db_path.strip().lower().startswith("http"):
+            raise RuntimeError("EXTERNAL_RAG_DB_PATH is a URL. Provide a local path instead.")
+        p = Path(settings.external_rag_db_path)
+        if p.is_dir():
+            chroma_ext = connect_chroma(
+                settings.external_rag_db_path,
+                collection_name=settings.external_chroma_collection,
+            )
+            docs = retrieve_top_n_chroma(
+                chroma_ext,
+                oai=oai,
+                embed_model=settings.openai_embed_model,
+                question=retrieval_query,
+                top_n=external_k,
+            )
+            for doc in docs[:external_k]:
+                external_sources.append(
+                    RetrievalSourceOut(
+                        source="external_rag",
+                        title=doc.title or str(doc.doc_id),
+                        url=doc.url,
+                        full_text=doc.text or "",
+                        score=None,
+                        paper={
+                            "doc_id": doc.doc_id,
+                            "title": doc.title,
+                            "text": doc.text,
+                            "url": doc.url,
+                        },
+                    )
+                )
+        else:
+            ext_conn = connect_external(settings.external_rag_db_path)
+            try:
+                q_vec = oai.embed(model=settings.openai_embed_model, text=retrieval_query)
+                hits = retrieve_top_n(ext_conn, query_vec=q_vec, top_n=external_k)
+                for hit in hits[:external_k]:
+                    doc = hit.doc
+                    external_sources.append(
+                        RetrievalSourceOut(
+                            source="external_rag",
+                            title=doc.title or str(doc.doc_id),
+                            url=doc.url,
+                            full_text=doc.text or "",
+                            score=float(hit.score),
+                            paper={
+                                "doc_id": doc.doc_id,
+                                "title": doc.title,
+                                "text": doc.text,
+                                "url": doc.url,
+                            },
+                        )
+                    )
+            finally:
+                ext_conn.close()
+
+    sources.extend(external_sources)
+    response = RetrievalOnlyResponse(
+        message=req.message,
+        mode=req.mode,
+        retrieval_query=query_used or retrieval_query,
+        pubmed_count=len(papers[:pubmed_k]),
+        external_count=len(external_sources),
+        total_count=len(sources),
+        sources=sources,
+    )
+    return _limit_retrieval_response(response)
+
+
+def _limit_retrieval_response(response: RetrievalOnlyResponse) -> RetrievalOnlyResponse:
+    """
+    Keep Supportfast retrieval payloads within agreed limits.
+    Sources are already ordered with PubMed first, then external RAG, so dropping
+    from the end preserves PubMed priority.
+    """
+    _trim_response_text(response, RETRIEVAL_MAX_TEXT_CHARS)
+    if _response_json_size(response) <= RETRIEVAL_MAX_JSON_BYTES:
+        return _refresh_retrieval_counts(response)
+
+    for max_chars in (RETRIEVAL_RECOMMENDED_TEXT_CHARS, 10_000, 6_000, 3_000):
+        _trim_response_text(response, max_chars)
+        if _response_json_size(response) <= RETRIEVAL_MAX_JSON_BYTES:
+            return _refresh_retrieval_counts(response)
+
+    while response.sources and _response_json_size(response) > RETRIEVAL_MAX_JSON_BYTES:
+        response.sources.pop()
+
+    return _refresh_retrieval_counts(response)
+
+
+def _trim_response_text(response: RetrievalOnlyResponse, max_chars: int) -> None:
+    remaining = max(0, int(max_chars))
+    for source in response.sources:
+        text = source.full_text or ""
+        if remaining <= 0:
+            _set_source_text(source, "")
+            continue
+
+        if len(text) > remaining:
+            text = _truncate_text(text, remaining)
+
+        _set_source_text(source, text)
+        remaining -= len(text)
+
+
+def _truncate_text(text: str, max_chars: int) -> str:
+    if max_chars <= 0:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    if max_chars <= len(TRUNCATION_SUFFIX):
+        return text[:max_chars]
+    return text[: max_chars - len(TRUNCATION_SUFFIX)].rstrip() + TRUNCATION_SUFFIX
+
+
+def _set_source_text(source: RetrievalSourceOut, text: str) -> None:
+    source.full_text = text
+    if source.source == "pubmed":
+        source.paper["abstract"] = text
+    elif source.source == "external_rag":
+        source.paper["text"] = text
+
+
+def _response_json_size(response: RetrievalOnlyResponse) -> int:
+    return len(json.dumps(_response_to_plain_dict(response), ensure_ascii=False).encode("utf-8"))
+
+
+def _response_to_plain_dict(response: RetrievalOnlyResponse) -> dict[str, Any]:
+    if hasattr(response, "model_dump"):
+        return response.model_dump()
+    return response.dict()
+
+
+def _refresh_retrieval_counts(response: RetrievalOnlyResponse) -> RetrievalOnlyResponse:
+    response.pubmed_count = sum(1 for s in response.sources if s.source == "pubmed")
+    response.external_count = sum(1 for s in response.sources if s.source == "external_rag")
+    response.total_count = len(response.sources)
+    return response
+
 
 def build_gyn_suggestions(req: ChatRequest) -> list[GynSuggestionOut]:
     has_location = bool(
