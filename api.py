@@ -628,10 +628,40 @@ def _run_retrieval_only(*, conn: Any, req: RetrievalOnlyRequest, settings: Any) 
         timeout_s=settings.pubmed_timeout_s,
     )
 
+    source_query = retrieval_query
+
+    try:
+        decision = decide_route(
+            oai,
+            model=settings.openai_chat_model,
+            question=retrieval_query,
+        )
+    except Exception:
+        decision = None
+    
+    if decision and decision.route == "pubmed" and decision.term:
+        source_query = decision.term.strip() or retrieval_query
+
     pmids: list[str] = []
     query_used = ""
+    
     if pubmed_k > 0:
-        for term in build_pubmed_term_candidates(retrieval_query):
+        terms: list[str] = []
+    
+        if source_query != retrieval_query:
+            terms.append(source_query)
+    
+        terms.extend(build_pubmed_term_candidates(retrieval_query))
+    
+        seen_terms: set[str] = set()
+        unique_terms: list[str] = []
+        for term in terms:
+            term = (term or "").strip()
+            if term and term not in seen_terms:
+                seen_terms.add(term)
+                unique_terms.append(term)
+    
+        for term in unique_terms:
             query_used = term
             pmids = pubmed.esearch(term, retmax=pubmed_k)
             if len(pmids) >= pubmed_k:
@@ -697,7 +727,7 @@ def _run_retrieval_only(*, conn: Any, req: RetrievalOnlyRequest, settings: Any) 
                 chroma_ext,
                 oai=oai,
                 embed_model=settings.openai_embed_model,
-                question=retrieval_query,
+                question=source_query,
                 top_n=external_k,
             )
             for doc in docs[:external_k]:
@@ -719,7 +749,7 @@ def _run_retrieval_only(*, conn: Any, req: RetrievalOnlyRequest, settings: Any) 
         else:
             ext_conn = connect_external(settings.external_rag_db_path)
             try:
-                q_vec = oai.embed(model=settings.openai_embed_model, text=retrieval_query)
+                q_vec = oai.embed(model=settings.openai_embed_model, text=source_query)
                 hits = retrieve_top_n(ext_conn, query_vec=q_vec, top_n=external_k)
                 for hit in hits[:external_k]:
                     doc = hit.doc
@@ -745,7 +775,7 @@ def _run_retrieval_only(*, conn: Any, req: RetrievalOnlyRequest, settings: Any) 
     response = RetrievalOnlyResponse(
         message=req.message,
         mode=req.mode,
-        retrieval_query=query_used or retrieval_query,
+        retrieval_query=query_used or source_query,
         pubmed_count=len(papers[:pubmed_k]),
         external_count=len(external_sources),
         total_count=len(sources),
