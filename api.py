@@ -631,16 +631,33 @@ def _run_retrieval_only(*, conn: Any, req: RetrievalOnlyRequest, settings: Any) 
     source_query = retrieval_query
 
     try:
-        decision = decide_route(
-            oai,
+        generated_query = oai.chat(
             model=settings.openai_chat_model,
-            question=retrieval_query,
+            temperature=0.0,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You convert user questions into effective PubMed search queries. "
+                        "Always return only one PubMed query in English. "
+                        "Do not answer the question. "
+                        "Do not return JSON. "
+                        "Include biomedical synonyms and MeSH terms when useful. "
+                        "Never return a generic gynecology or obstetrics query if the user asks about a specific topic."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": retrieval_query,
+                },
+            ],
         )
-    except Exception:
-        decision = None
-    
-    if decision and decision.route == "pubmed" and decision.term:
-        source_query = decision.term.strip() or retrieval_query
+        generated_query = (generated_query or "").strip()
+        if generated_query:
+            source_query = generated_query
+    except Exception as e:
+        print(f"[SUPPORTFAST_QUERY_LLM_ERROR] {type(e).__name__}: {str(e)}", flush=True)
+        source_query = retrieval_query
 
     pmids: list[str] = []
     query_used = ""
