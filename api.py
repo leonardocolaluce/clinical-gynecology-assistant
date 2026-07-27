@@ -747,18 +747,32 @@ def _run_retrieval_only(*, conn: Any, req: RetrievalOnlyRequest, settings: Any) 
                 question=source_query,
                 top_n=external_k,
             )
-            for doc in docs[:external_k]:
+            
+            seen_external_doc_ids: set[str] = set()
+
+            for doc in docs:
+                base_doc_id = str(doc.doc_id or "").split("_")[0]
+                text = (doc.text or "").strip()
+            
+                if not text:
+                    continue
+            
+                if base_doc_id in seen_external_doc_ids:
+                    continue
+            
+                seen_external_doc_ids.add(base_doc_id)
+            
                 external_sources.append(
                     RetrievalSourceOut(
                         source="external_rag",
                         title=doc.title or str(doc.doc_id),
                         url=doc.url,
-                        full_text=doc.text or "",
+                        full_text=text,
                         score=None,
                         paper={
                             "doc_id": doc.doc_id,
                             "title": doc.title,
-                            "text": doc.text,
+                            "text": text,
                             "url": doc.url,
                         },
                     )
@@ -768,23 +782,39 @@ def _run_retrieval_only(*, conn: Any, req: RetrievalOnlyRequest, settings: Any) 
             try:
                 q_vec = oai.embed(model=settings.openai_embed_model, text=source_query)
                 hits = retrieve_top_n(ext_conn, query_vec=q_vec, top_n=external_k)
-                for hit in hits[:external_k]:
+                seen_external_doc_ids: set[str] = set()
+
+                for hit in hits:
                     doc = hit.doc
+                    base_doc_id = str(doc.doc_id or "").split("_")[0]
+                    text = (doc.text or "").strip()
+                
+                    if not text:
+                        continue
+                
+                    if base_doc_id in seen_external_doc_ids:
+                        continue
+                
+                    seen_external_doc_ids.add(base_doc_id)
+                
                     external_sources.append(
                         RetrievalSourceOut(
                             source="external_rag",
                             title=doc.title or str(doc.doc_id),
                             url=doc.url,
-                            full_text=doc.text or "",
+                            full_text=text,
                             score=float(hit.score),
                             paper={
                                 "doc_id": doc.doc_id,
                                 "title": doc.title,
-                                "text": doc.text,
+                                "text": text,
                                 "url": doc.url,
                             },
                         )
                     )
+                
+                    if len(external_sources) >= external_k:
+                        break
             finally:
                 ext_conn.close()
 
