@@ -82,6 +82,10 @@ class RetrievalOnlyRequest(BaseModel):
     mode: str = Field(default="patient", description="patient|doctor|menopause")
     session_id: Optional[str] = None
     context: Optional[str] = None
+    city: Optional[str] = None
+    address_hint: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     pubmed_k: int = Field(default=5, ge=0, le=5)
     external_k: int = Field(default=5, ge=0, le=5)
 
@@ -101,6 +105,8 @@ class RetrievalOnlyResponse(BaseModel):
     external_count: int
     total_count: int
     sources: list[RetrievalSourceOut]
+    suggestions: list[GynSuggestionOut] = []
+    needs_area: bool = False
 
 
 RETRIEVAL_RECOMMENDED_TEXT_CHARS = 15_000
@@ -113,6 +119,10 @@ class SupportfastRetrievalRequest(BaseModel):
     message: str = Field(..., min_length=1)
     mode: Optional[str] = Field(default="patient", description="patient|doctor|menopause")
     context: str = ""
+    city: Optional[str] = None
+    address_hint: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 class StatusMessageResponse(BaseModel):
     message: str
@@ -212,6 +222,10 @@ def supportfast_retrieval(req: SupportfastRetrievalRequest) -> RetrievalOnlyResp
         message=req.message,
         mode=req.mode or "patient",
         context=req.context or "",
+        city=req.city,
+        address_hint=req.address_hint,
+        latitude=req.latitude,
+        longitude=req.longitude,
         pubmed_k=5,
         external_k=5,
     )
@@ -628,6 +642,58 @@ def _run_retrieval_only(*, conn: Any, req: RetrievalOnlyRequest, settings: Any) 
         timeout_s=settings.pubmed_timeout_s,
     )
 
+    if not _is_doctor_mode(req.mode):
+        try:
+            wants_gyn, gyn_area = _detect_gyn_request(
+                oai,
+                model=settings.openai_chat_model,
+                message=req.message,
+                history=[{"question": req.context or "", "answer": ""}],
+            )
+        except Exception as e:
+            print(f"[SUPPORTFAST_GYN_DETECT_ERROR] {type(e).__name__}: {str(e)}", flush=True)
+            wants_gyn, gyn_area = False, None
+
+        if req.city or req.address_hint:
+            gyn_area = (req.city or req.address_hint or "").strip() or gyn_area
+
+        if wants_gyn:
+            if not gyn_area and req.latitude is None and req.longitude is None:
+                return RetrievalOnlyResponse(
+                    message=req.message,
+                    mode=req.mode,
+                    retrieval_query="gyn_area_request",
+                    pubmed_count=0,
+                    external_count=0,
+                    total_count=0,
+                    sources=[],
+                    suggestions=[],
+                    needs_area=True,
+                )
+
+            suggestions = build_gyn_suggestions(
+                ChatRequest(
+                    message=req.message,
+                    mode=req.mode,
+                    city=gyn_area,
+                    address_hint=gyn_area,
+                    latitude=req.latitude,
+                    longitude=req.longitude,
+                )
+            )
+
+            return RetrievalOnlyResponse(
+                message=req.message,
+                mode=req.mode,
+                retrieval_query="gyn_suggestions",
+                pubmed_count=0,
+                external_count=0,
+                total_count=0,
+                sources=[],
+                suggestions=suggestions,
+                needs_area=False,
+            )
+
     source_query = retrieval_query
 
     try:
@@ -812,7 +878,7 @@ def _run_retrieval_only(*, conn: Any, req: RetrievalOnlyRequest, settings: Any) 
                             },
                         )
                     )
-                
+
                     if len(external_sources) >= external_k:
                         break
             finally:
@@ -827,6 +893,8 @@ def _run_retrieval_only(*, conn: Any, req: RetrievalOnlyRequest, settings: Any) 
         external_count=len(external_sources),
         total_count=len(sources),
         sources=sources,
+        suggestions=[],
+        needs_area=False,
     )
     return _limit_retrieval_response(response)
 
