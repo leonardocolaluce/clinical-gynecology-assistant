@@ -194,6 +194,7 @@ def main() -> int:
                                 question=q,
                                 top_n=int(settings.external_candidates),
                             )
+                            docs = [d for d in docs if d.score is not None and d.score >= 0.80]
                             external_docs = docs[: max(0, int(settings.final_external_k))]
                             print(f"[Retrieval] External(Chroma): candidati={len(docs)}, final_k={len(external_docs)}")
                             if external_docs:
@@ -208,6 +209,7 @@ def main() -> int:
                             query_vec=q_vec,
                             top_n=int(settings.external_candidates),
                         )
+                        hits = [h for h in hits if h.score >= 0.80]
                         external_docs = [h.doc for h in hits[: max(0, int(settings.final_external_k))]]
                         print(f"[Retrieval] External(SQLite): candidati={len(hits)}, final_k={len(external_docs)}")
                         if external_docs:
