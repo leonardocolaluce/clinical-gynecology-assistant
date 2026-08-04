@@ -24,3 +24,4 @@ class ExternalDoc:
     title: str
     text: str
     url: Optional[str] = None
+    score: Optional[float] = None
