@@ -496,6 +496,7 @@ def chat(req: ChatRequest) -> ChatResponse:
                         question=retrieval_question,
                         top_n=external_candidates,
                     )
+                    docs = [d for d in docs if d.score is not None and d.score >= 0.80]
                     external_docs = docs[: max(0, final_external_k)]
                     print(f"[EUROPEPMC] Chroma retrieval done candidates={len(docs)} final={len(external_docs)}", flush=True)
                     dbg(f"External(Chroma) docs={len(docs)} final={len(external_docs)}")
@@ -509,6 +510,7 @@ def chat(req: ChatRequest) -> ChatResponse:
                 try:
                     q_vec = oai.embed(model=settings.openai_embed_model, text=req.message)
                     hits = retrieve_top_n(ext_conn, query_vec=q_vec, top_n=external_candidates)
+                    hits = [h for h in hits if h.score >= 0.80]
                     external_docs = [h.doc for h in hits[: max(0, final_external_k)]]
                     dbg(f"External(SQLite) hits={len(hits)} final={len(external_docs)}")
                 finally:
