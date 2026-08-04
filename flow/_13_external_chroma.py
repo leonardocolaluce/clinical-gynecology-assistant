@@ -77,24 +77,28 @@ def retrieve_top_n_chroma(
                 "Set EXTERNAL_CHROMA_COLLECTION to a valid name."
             ) from e
 
-    res = col.query(query_embeddings=[q_vec], n_results=n, include=["documents", "metadatas"])
+    res = col.query(query_embeddings=[q_vec], n_results=n, include=["documents", "metadatas", "distances"])
     ids = (res.get("ids") or [[]])[0] or []
     docs = (res.get("documents") or [[]])[0] or []
     metas = (res.get("metadatas") or [[]])[0] or []
-
+    distances = (res.get("distances") or [[]])[0] or []
+    
     out: list[ExternalDoc] = []
-    for doc_id, text, meta in zip(ids, docs, metas):
+    for doc_id, text, meta, distance in zip(ids, docs, metas, distances):
         text_value = str(text or "")
         title, url = _meta_title_url(meta)
         if not title:
             title = _extract_title_from_text(text_value)
         
+        score = max(0.0, min(1.0, 1.0 - float(distance)))
+
         out.append(
             ExternalDoc(
                 doc_id=str(doc_id),
                 title=title,
                 text=text_value,
                 url=url,
+                score=score,
             )
         )
     return out
