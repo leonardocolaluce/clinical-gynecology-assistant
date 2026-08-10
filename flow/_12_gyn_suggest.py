@@ -12,6 +12,7 @@ import openpyxl
 class GynSuggestion:
     name: str
     address: str
+    city: Optional[str] = None
     phone: Optional[str] = None
     website: Optional[str] = None
     emails: Optional[str] = None
@@ -80,19 +81,20 @@ def suggest_top3(
         )
     )
 
-    return [
-        GynSuggestion(
-            name=item["name"],
-            address=item["address"],
-            phone=item["phone"],
-            website=item["website"],
-            emails=item["emails"],
-            rating=item["rating"],
-            reviews=item["reviews"],
-            distance_km=round(distance_km, 1) if distance_km is not None else None,
-        )
-        for _, distance_km, item in scored[:3]
-    ]
+        return [
+            GynSuggestion(
+                name=item["name"],
+                address=item["address"],
+                city=item["city"],
+                phone=item["phone"],
+                website=item["website"],
+                emails=item["emails"],
+                rating=item["rating"],
+                reviews=item["reviews"],
+                distance_km=round(distance_km, 1) if distance_km is not None else None,
+            )
+            for _, distance_km, item in scored[:3]
+        ]
 
 
 def _load_rows(path: Path) -> list[dict]:
@@ -100,16 +102,23 @@ def _load_rows(path: Path) -> list[dict]:
     ws = wb.active
     out = []
 
+    headers = [
+        str(cell).strip() if cell is not None else ""
+        for cell in next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
+    ]
+    col = {name: idx for idx, name in enumerate(headers)}
+
     for row in ws.iter_rows(min_row=2, values_only=True):
-        name = _str(row[0])
-        phone = _str(row[1])
-        address = _str(row[3])
-        website = _str(row[5])
-        emails = _str(row[6])
-        reviews = _float(row[7])
-        rating = _float(row[8])
-        latitude = _coord(row[9])
-        longitude = _coord(row[10])
+        name = _str(row[col["Business Name"]])
+        phone = _str(row[col["Number"]])
+        address = _str(row[col["Address (Zip code, City, Country)"]])
+        city = _str(row[col["Città"]])
+        website = _str(row[col["Website"]])
+        emails = _str(row[col["Emails"]])
+        reviews = _float(row[col["Reviews"]])
+        rating = _float(row[col["Rating"]])
+        latitude = _coord(row[col["Latitude valida"]])
+        longitude = _coord(row[col["Longitude valida"]])
 
         if not name or not address:
             continue
@@ -117,6 +126,7 @@ def _load_rows(path: Path) -> list[dict]:
         out.append(
             {
                 "name": name,
+                "city": city,
                 "phone": phone,
                 "address": address,
                 "website": website,
