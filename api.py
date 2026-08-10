@@ -45,6 +45,7 @@ class ChatRequest(BaseModel):
 class GynSuggestionOut(BaseModel):
     name: str
     address: str
+    city: Optional[str] = None
     phone: Optional[str] = None
     website: Optional[str] = None
     emails: Optional[str] = None
@@ -993,6 +994,7 @@ def build_gyn_suggestions(req: ChatRequest) -> list[GynSuggestionOut]:
         GynSuggestionOut(
             name=s.name,
             address=s.address,
+            city=s.city,
             phone=s.phone,
             website=s.website,
             emails=s.emails,
