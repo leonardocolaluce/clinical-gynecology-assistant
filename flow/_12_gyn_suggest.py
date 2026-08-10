@@ -81,20 +81,20 @@ def suggest_top3(
         )
     )
 
-        return [
-            GynSuggestion(
-                name=item["name"],
-                address=item["address"],
-                city=item["city"],
-                phone=item["phone"],
-                website=item["website"],
-                emails=item["emails"],
-                rating=item["rating"],
-                reviews=item["reviews"],
-                distance_km=round(distance_km, 1) if distance_km is not None else None,
-            )
-            for _, distance_km, item in scored[:3]
-        ]
+    return [
+        GynSuggestion(
+            name=item["name"],
+            address=item["address"],
+            city=item["city"],
+            phone=item["phone"],
+            website=item["website"],
+            emails=item["emails"],
+            rating=item["rating"],
+            reviews=item["reviews"],
+            distance_km=round(distance_km, 1) if distance_km is not None else None,
+        )
+        for _, distance_km, item in scored[:3]
+    ]
 
 
 def _load_rows(path: Path) -> list[dict]:
