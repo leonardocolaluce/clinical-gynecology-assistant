@@ -653,6 +653,14 @@ def _run_retrieval_only(*, conn: Any, req: RetrievalOnlyRequest, settings: Any) 
                 message=req.message,
                 history=[{"question": req.context or "", "answer": ""}],
             )
+            print(
+                f"[SUPPORTFAST_GYN] mode={req.mode!r} "
+                f"message={req.message!r} "
+                f"context={req.context!r} "
+                f"wants_gyn={wants_gyn!r} "
+                f"gyn_area={gyn_area!r}",
+                flush=True,
+            )
         except Exception as e:
             print(f"[SUPPORTFAST_GYN_DETECT_ERROR] {type(e).__name__}: {str(e)}", flush=True)
             wants_gyn, gyn_area = False, None
@@ -683,6 +691,14 @@ def _run_retrieval_only(*, conn: Any, req: RetrievalOnlyRequest, settings: Any) 
                     latitude=req.latitude,
                     longitude=req.longitude,
                 )
+            )
+                
+            print(
+                f"[SUPPORTFAST_GYN_RESULTS] "
+                f"mode={req.mode!r} "
+                f"area={gyn_area!r} "
+                f"suggestions_count={len(suggestions)}",
+                flush=True,
             )
 
             return RetrievalOnlyResponse(
