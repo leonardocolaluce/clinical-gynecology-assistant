@@ -215,6 +215,16 @@ def retrieval_only(req: RetrievalOnlyRequest) -> RetrievalOnlyResponse:
 
 @app.post("/supportfast/retrieval", response_model=RetrievalOnlyResponse)
 def supportfast_retrieval(req: SupportfastRetrievalRequest) -> RetrievalOnlyResponse:
+    print(
+        f"[SUPPORTFAST_IN] "
+        f"message={req.message!r} "
+        f"mode={req.mode!r} "
+        f"context={req.context!r} "
+        f"city={req.city!r} "
+        f"address_hint={req.address_hint!r}",
+        flush=True,
+    )
+
     settings = load_settings()
     if not settings.openai_api_key:
         raise HTTPException(status_code=500, detail="Missing OPENAI_API_KEY")
